@@ -15,24 +15,23 @@ PASTA_TEMP = "/tmp/bot_temp/"
 os.makedirs(PASTA_TEMP, exist_ok=True)
 
 # ==============================================
-# ✅ TODOS OS TÓPICOS COM SEUS IDs E NOMES
+# ✅ TÓPICOS COM NOMES (IDs REAIS SERÃO DESCOBERTOS AUTOMATICAMENTE)
 # ==============================================
 TOPICOS_PARA_PROCESSAR = [
-    (2, "álbum vazados"),
-    (3755, "álbum faveladas"),
-    (3754, "álbum lives faveladinhas"),
-    (15606, "álbum funk faveladas"),
-    (11245, "álbum TikTok faveladas"),
-    (11604, "álbum flagra na rua"),
-    (11954, "álbum lives faveladas"),
-    (12744, "Câmeras escondidas"),
-    (13016, "álbum trans"),
-    (15281, "álbum corninhos"),
-    (20409, "álbum omegle"),
-    (22342, "só as gordinhas"),
-    (21210, "álbum xvideos red"),
-    (21965, "álbum anãs"),
-    (23320, "álbum amadoras"),
+    "álbum faveladas",
+    "álbum lives faveladinhas",
+    "álbum funk faveladas",
+    "álbum TikTok faveladas",
+    "álbum flagra na rua",
+    "álbum lives faveladas",
+    "Câmeras escondidas",
+    "álbum trans",
+    "álbum corninhos",
+    "álbum omegle",
+    "só as gordinhas",
+    "álbum xvideos red",
+    "álbum anãs",
+    "álbum amadoras",
 ]
 
 # ==============================================
@@ -43,6 +42,7 @@ try:
     db = mongo_client["sanizinhabot_db"]
     coll_enviados = db["midias_enviadas"]
     coll_topicos_concluidos = db["topicos_concluidos"]
+    coll_topicos_nomes = db["topicos_nomes"]  # Salva nome → id real
     print("✅ Conectado ao MongoDB!")
 except Exception as e:
     print(f"⚠️ ERRO MongoDB: {e}")
@@ -54,7 +54,7 @@ except Exception as e:
 def gerar_hashtag(nome_topico):
     nome_limpo = re.sub(r"álbum\s+", "", nome_topico, flags=re.IGNORECASE).strip()
     sem_acentos = nome_limpo.lower()
-    sem_acentos = sem_acentos.replace(" ", "").replace("ã", "a").replace("ç", "c").replace("í", "i").replace("á", "a")
+    sem_acentos = sem_acentos.replace(" ", "").replace("ã", "a").replace("ç", "c").replace("í", "i").replace("á", "a").replace("ô", "o").replace("ê", "e")
     return f"#{sem_acentos}"
 
 # ==============================================
@@ -84,14 +84,14 @@ def salvar_enviado(msg_id, nome, tam_bytes, id_topico):
 # ==============================================
 # ✅ MARCA TÓPICO COMO CONCLUÍDO
 # ==============================================
-def topico_ja_concluido(id_topico):
-    return coll_topicos_concluidos.find_one({"topico_id": id_topico}) is not None
+def topico_ja_concluido(nome_topico):
+    return coll_topicos_concluidos.find_one({"nome_topico": nome_topico}) is not None
 
-def marcar_topico_concluido(id_topico, nome_topico, total_itens):
+def marcar_topico_concluido(nome_topico, id_topico, total_itens):
     coll_topicos_concluidos.update_one(
-        {"topico_id": id_topico},
+        {"nome_topico": nome_topico},
         {"$set": {
-            "nome_topico": nome_topico,
+            "topico_id": id_topico,
             "total_itens": total_itens,
             "concluido_em": time.time()
         }},
@@ -99,16 +99,52 @@ def marcar_topico_concluido(id_topico, nome_topico, total_itens):
     )
 
 # ==============================================
+# ✅ DESCOBRE O ID REAL DO TÓPICO PELO NOME NAS MENSAGENS
+# ==============================================
+async def descobrir_id_topico(app, nome_topico):
+    # Primeiro tenta buscar do banco
+    salvo = coll_topicos_nomes.find_one({"nome": nome_topico})
+    if salvo:
+        return salvo["topico_id"]
+
+    nome_busca = re.sub(r"álbum\s+", "", nome_topico, flags=re.IGNORECASE).strip().lower()
+    contagem_ids = {}
+
+    async for msg in app.get_chat_history(GRUPO_ORIGEM, limit=5000):
+        tid = getattr(msg, 'topic_id', None) or getattr(msg, 'reply_to_message_id', None)
+        if not tid:
+            continue
+        if msg.video or msg.photo:
+            legenda = (msg.caption or "").lower()
+            if any(palavra in legenda for palavra in nome_busca.split()):
+                contagem_ids[tid] = contagem_ids.get(tid, 0) + 1
+        if len(contagem_ids) > 10:
+            break
+
+    if contagem_ids:
+        id_real = max(contagem_ids, key=contagem_ids.get)
+        coll_topicos_nomes.update_one({"nome": nome_topico}, {"$set": {"topico_id": id_real}}, upsert=True)
+        print(f"🔍 ID REAL DESCOBERTO: '{nome_topico}' → {id_real}")
+        return id_real
+
+    print(f"⚠️ Não foi possível descobrir ID de: {nome_topico}")
+    return None
+
+# ==============================================
 # ✅ PROCESSAR UM TÓPICO INTEIRO
 # ==============================================
-async def processar_topico(app, id_topico, nome_topico):
+async def processar_topico(app, nome_topico):
     print(f"\n{'='*70}")
-    print(f"🚀 INICIANDO TÓPICO {id_topico} — {nome_topico}")
+    print(f"🚀 INICIANDO TÓPICO — {nome_topico}")
     print(f"{'='*70}")
 
-    # ✅ PULA se já foi concluído antes
-    if topico_ja_concluido(id_topico):
-        print(f"✅ TÓPICO {id_topico} JÁ CONCLUÍDO ANTES → PULANDO!\n")
+    if topico_ja_concluido(nome_topico):
+        print(f"✅ TÓPICO JÁ CONCLUÍDO ANTES → PULANDO!\n")
+        return 0
+
+    id_topico = await descobrir_id_topico(app, nome_topico)
+    if not id_topico:
+        print(f"❌ Sem ID → pulando esse tópico\n")
         return 0
 
     hashtag = gerar_hashtag(nome_topico)
@@ -120,7 +156,7 @@ async def processar_topico(app, id_topico, nome_topico):
         lote = []
         async for msg in app.get_chat_history(GRUPO_ORIGEM, limit=lote_tamanho, offset_id=ultimo_id):
             ultimo_id = msg.id
-            msg_topico = getattr(msg, 'topic_id', None) or msg.reply_to_message_id
+            msg_topico = getattr(msg, 'topic_id', None) or getattr(msg, 'reply_to_message_id', None)
             if msg_topico != id_topico:
                 continue
             if not msg.video and not msg.photo:
@@ -132,11 +168,11 @@ async def processar_topico(app, id_topico, nome_topico):
         todas_msg.extend(lote)
         if len(lote) < lote_tamanho:
             break
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.3)
 
     if not todas_msg:
-        print(f"✅ TÓPICO {id_topico}: Nenhum item encontrado!\n")
-        marcar_topico_concluido(id_topico, nome_topico, 0)
+        print(f"✅ TÓPICO: Nenhum item NOVO!\n")
+        marcar_topico_concluido(nome_topico, id_topico, 0)
         return 0
 
     todas_msg.reverse()
@@ -165,7 +201,6 @@ async def processar_topico(app, id_topico, nome_topico):
             nome = f"foto_{msg_id}.jpg"
             tam_bytes = 0
 
-        # ✅ LEGENDA: se tiver legenda → usa ela; senão → usa #hashtag
         legenda_final = legenda_original.strip() if legenda_original else hashtag
 
         item = {
@@ -200,8 +235,8 @@ async def processar_topico(app, id_topico, nome_topico):
         grupos.append(grupo_atual)
 
     if not grupos:
-        print(f"✅ TÓPICO {id_topico}: Nenhum item NOVO!\n")
-        marcar_topico_concluido(id_topico, nome_topico, 0)
+        print(f"✅ Nenhum item NOVO!\n")
+        marcar_topico_concluido(nome_topico, id_topico, 0)
         return 0
 
     # ✅ ENVIAR OS GRUPOS
@@ -256,12 +291,12 @@ async def processar_topico(app, id_topico, nome_topico):
 
             total_enviados += len(caminhos)
 
-            # ✅ APAGA ARQUIVO BAIXADO → NÃO PESA
+            # ✅ APAGA ARQUIVO
             for m in caminhos:
                 try: os.remove(m["caminho"])
                 except: pass
 
-            # ✅ PAUSA INTELIGENTE
+            # ✅ PAUSA
             if qtd > 3 or (tam_mb != "foto" and float(tam_mb) > 50):
                 await asyncio.sleep(2)
             else:
@@ -272,8 +307,8 @@ async def processar_topico(app, id_topico, nome_topico):
             print(f"❌ ERRO: {erro}\n")
             await asyncio.sleep(2)
 
-    marcar_topico_concluido(id_topico, nome_topico, total_enviados)
-    print(f"\n🏁 TÓPICO {id_topico} CONCLUÍDO! Enviados: {total_enviados} itens\n")
+    marcar_topico_concluido(nome_topico, id_topico, total_enviados)
+    print(f"\n🏁 TÓPICO CONCLUÍDO! Enviados: {total_enviados} itens\n")
     return total_enviados
 
 # ==============================================
@@ -285,8 +320,8 @@ async def main():
         print(f"🔌 CONECTADO! Iniciando processamento dos tópicos...\n")
 
         total_geral = 0
-        for id_topico, nome_topico in TOPICOS_PARA_PROCESSAR:
-            qtd = await processar_topico(app, id_topico, nome_topico)
+        for nome_topico in TOPICOS_PARA_PROCESSAR:
+            qtd = await processar_topico(app, nome_topico)
             total_geral += qtd
             print(f"⏳ Pausa 3s antes do próximo tópico...\n")
             await asyncio.sleep(3)
