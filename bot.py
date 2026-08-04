@@ -10,10 +10,10 @@ from flask import Flask
 from pymongo import MongoClient
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder, 
-    CommandHandler, 
-    CallbackQueryHandler, 
-    TypeHandler, 
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    TypeHandler,
     ContextTypes,
     ApplicationHandlerStop,
     ChatMemberHandler
@@ -39,7 +39,7 @@ MONGO_URI = os.environ.get("MONGO_URI")
 
 try:
     mongo_client = MongoClient(
-        MONGO_URI, 
+        MONGO_URI,
         serverSelectionTimeoutMS=5000,
         connectTimeoutMS=5000,
         tlsAllowInvalidCertificates=True
@@ -52,26 +52,20 @@ except Exception as e:
 
 TEMPO_INICIAL = time.time()
 
-# ⚠️ ATENÇÃO: Esses links podem estar com problema! Se não funcionar, use links diretos do Telegram
-LISTA_VIDEOS_START = [
-    "https://ellixgr.github.io/x23wzp/VN20260728_020021.mp4",
-    "https://ellixgr.github.io/x23wzp/VN20260728_015729.mp4"
-]
+ultimo_envio = {}
+contador_spam = {}
+usuarios_bloqueados = {}
+bloqueio_temporario = {}
+pagamentos_notificados = set()
 
-ultimo_envio = {}          
-contador_spam = {}         
-usuarios_bloqueados = {}     
-bloqueio_temporario = {}     
-pagamentos_notificados = set() 
-
-# ✅ FUNÇÕES AQUI (IGUAIS AS SUAS, SEM ALTERAÇÃO)
+# ✅ INTERCEPTADOR ANTI-SPAM
 async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user:
-        return  
+        return
     user_id = user.id
     agora = time.time()
-    
+
     if user_id == DONO_ID:
         return
 
@@ -82,20 +76,20 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
 
     if user_id in bloqueio_temporario:
         if bloqueio_temporario[user_id] - agora > 0:
-            raise ApplicationHandlerStop  
+            raise ApplicationHandlerStop
         else:
             del bloqueio_temporario[user_id]
             contador_spam.pop(user_id, None)
-                
+
     if user_id in usuarios_bloqueados:
-        raise ApplicationHandlerStop        
+        raise ApplicationHandlerStop
 
     if user_id in ultimo_envio:
         if agora - ultimo_envio[user_id] < 1.2:
             contador_spam[user_id] = contador_spam.get(user_id, 0) + 1
             ultimo_envio[user_id] = agora
             if contador_spam[user_id] >= 8:
-                bloqueio_temporario[user_id] = agora + 300  
+                bloqueio_temporario[user_id] = agora + 300
                 contador_spam[user_id] = 0
                 if update.effective_chat.type == "private":
                     try:
@@ -106,18 +100,18 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
                         )
                     except Exception:
                         pass
-                raise ApplicationHandlerStop           
+                raise ApplicationHandlerStop
             raise ApplicationHandlerStop
-            
+
     ultimo_envio[user_id] = agora
 
 async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
     if not result:
-        return        
+        return
     chat = result.chat
     new_status = result.new_chat_member.status
-    
+
     if chat.type in ["group", "supergroup", "channel"]:
         try:
             if new_status in ["member", "administrator"]:
@@ -131,16 +125,21 @@ async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT
         except Exception as e:
             print(f"Erro ao atualizar chat no DB: {e}")
 
+# ✅ FUNÇÃO START CORRIGIDA — PEGA MÍDIA DO GRUPO + TEXTO CERTO
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
+    user = update.effective_user
+
+    usuario_mencao = f"@{user.username}" if user.username else user.first_name or "Usuário"
+
+    # ✅ TEXTO EXATO QUE VOCÊ PEDIU
     texto_boas_vindas = (
-        "🔥 **𝐴𝑄𝑈𝐼 𝑇𝐸𝑀 𝑇𝑂𝐷𝑂𝑆 𝑂𝑆 𝐶𝑂𝑁𝑇𝐸𝑈𝐷𝑂𝑆** 🇧🇷\n\n"
-        "🤭🔥Tenha acesso completo a todo o nosso conteúdo atualizado em um só lugar:\n\n"
-        "📁 +2𝑚𝑖𝑙 mídias disponíveis (vídeos e fotos)\n"
-        "👇 Escolha o seu plano abaixo para liberar o seu acesso:\n\n"
-        "💡 *Precisa de ajuda? Fale com o suporte:* @Lyhhxv"
+        f"{usuario_mencao} 𝐭𝐞𝐧𝐡𝐚 𝐚𝐜𝐞𝐬𝐬𝐨 𝐯𝐢𝐩 𝐩𝐨𝐫 2$\n"
+        "𝐬𝐚𝐨 20000 𝐦𝐢𝐥 𝐦𝐢𝐝𝐢𝐚𝐬 🥵\n"
+        "𝐭𝐮𝐝𝐨 𝐞𝐦 𝐮𝐦 𝐬𝐨 𝐥𝐮𝐠𝐚𝐫😼"
     )
+
     keyboard = [
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐎𝐑 1 𝐃𝐈𝐀 → R$ 2,50 🔥", callback_data="comprar_2.50")],
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐎𝐑 1 𝐒𝐄𝐌𝐀𝐍𝐀 → R$ 7,00", callback_data="comprar_7.00")],
@@ -148,18 +147,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐄𝐑𝐌𝐀ℕ𝐄𝐍𝐓𝐄 → R$ 60,00", callback_data="comprar_60.00")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    video_escolhido = random.choice(LISTA_VIDEOS_START)
-    
+
+    # ✅ PEGA MÍDIA DIRETO DO GRUPO (CANAL_ALVO_ID)
+    midia_ok = False
     try:
-        await update.message.reply_video(
-            video=video_escolhido,
-            caption=texto_boas_vindas,
-            reply_markup=reply_markup,
-            parse_mode="Markdown",
-            protect_content=True
-        )
-    except Exception:
+        async for msg in context.bot.get_chat_history(chat_id=CANAL_ALVO_ID, limit=150):
+            if msg.photo:
+                foto = msg.photo[-1]
+                await update.message.reply_photo(
+                    photo=foto.file_id,
+                    caption=texto_boas_vindas,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown",
+                    protect_content=True
+                )
+                midia_ok = True
+                break
+            elif msg.video and not msg.video.is_animation:
+                await update.message.reply_video(
+                    video=msg.video.file_id,
+                    caption=texto_boas_vindas,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown",
+                    protect_content=True
+                )
+                midia_ok = True
+                break
+    except Exception as e:
+        print(f"⚠️ Erro ao buscar mídia do grupo: {e}")
+
+    # ✅ Se não achar mídia, envia só o texto
+    if not midia_ok:
         await update.message.reply_text(texto_boas_vindas, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,7 +260,7 @@ async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != DONO_ID:
         return
-    
+
     try:
         chats = list(collection_chats.find({}))
     except Exception as e:
@@ -277,7 +295,7 @@ async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def grupos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != DONO_ID:
         return
-    
+
     try:
         chats = list(collection_chats.find({}))
     except Exception as e:
@@ -311,25 +329,25 @@ async def grupos_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def clientes_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != DONO_ID:
         return
-    
+
     agora = time.time()
     try:
         lista_clientes = list(collection_clientes.find({}))
     except Exception as e:
         await update.message.reply_text(f"❌ Erro ao acessar o banco de dados:\n`{e}`", parse_mode="Markdown")
         return
-    
+
     if not lista_clientes:
         await update.message.reply_text("📁 **Nenhum cliente ativo encontrado no banco de dados.**", parse_mode="Markdown")
         return
-        
+
     resposta = f"📋 **LISTA DE CLIENTES ATIVOS ({len(lista_clientes)})**:\n\n"
-    
+
     for i, cliente in enumerate(lista_clientes, 1):
         user_id = cliente.get("user_id")
         nome = cliente.get("nome", "Desconhecido")
         expira_em = cliente.get("expira_em", 0)
-        
+
         tempo_restante = expira_em - agora
         if tempo_restante > 0:
             dias_restantes = int(tempo_restante // 86400)
@@ -341,20 +359,20 @@ async def clientes_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 tempo_str = f"{dias_restantes}d {horas_restantes}h {minutos_restantes}m"
         else:
             tempo_str = "Expirado ❌"
-            
+
         data_exp_formatada = time.strftime('%d/%m/%Y às %H:%M', time.localtime(expira_em)) if expira_em > 0 else "N/A"
-        
+
         resposta += (
             f"🔹 **{i}. {nome}**\n"
             f"🆔 ID: `{user_id}`\n"
             f"⏳ Expira em: `{tempo_str}`\n"
             f"📅 Data limite: `{data_exp_formatada}`\n\n"
         )
-        
+
         if len(resposta) > 3800:
             await update.message.reply_text(resposta, parse_mode="Markdown")
             resposta = ""
-            
+
     if resposta:
         await update.message.reply_text(resposta, parse_mode="Markdown")
 
@@ -384,7 +402,7 @@ async def suporte_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def addusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != DONO_ID:
         return
-    
+
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
@@ -396,12 +414,12 @@ async def addusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         return
-    
+
     try:
         user_id = int(args[0])
         resto_texto = "".join(args[1:]).lower()
-        
-        duracao_segundos = 86400  
+
+        duracao_segundos = 86400
         tempo_str_formatado = ""
 
         match_m = re.search(r'(\d+)m', resto_texto)
@@ -429,21 +447,21 @@ async def addusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 dias_valor = int(re.sub(r'[^0-9]', '', args[2]) or '1')
             else:
                 dias_valor = int(re.sub(r'[^0-9]', '', plano_arg) or '1')
-            
+
             if dias_valor == 7:
                 duracao_segundos = 86400 * 7
             elif dias_valor == 20:
                 duracao_segundos = 86400 * 30
             elif dias_valor == 60:
-                duracao_segundos = 86400 * 365 * 10  
+                duracao_segundos = 86400 * 365 * 10
             elif dias_valor == 2:
                 duracao_segundos = 86400 * 1
             else:
                 duracao_segundos = 86400 * dias_valor
             tempo_str_formatado = f"{dias_valor} dia(s)"
-            
+
         tempo_expiracao = time.time() + duracao_segundos
-        
+
         collection_clientes.update_one(
             {"user_id": user_id},
             {
@@ -464,16 +482,16 @@ async def addusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != DONO_ID:
         return
-    
+
     args = context.args
     if not args:
         await update.message.reply_text("⚠️ Use: `/delusuario <id_usuario>`", parse_mode="Markdown")
         return
-    
+
     try:
         user_id = int(args[0])
         resultado = collection_clientes.delete_one({"user_id": user_id})
-        
+
         if resultado.deleted_count > 0:
             await update.message.reply_text(f"✅ O usuário `{user_id}` foi removido da lista de clientes com sucesso! (Ele continua no grupo).", parse_mode="Markdown")
         else:
@@ -484,7 +502,7 @@ async def delusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-    
+
     if data.startswith("listar_membros_"):
         chat_id_str = data.replace("listar_membros_", "")
         try:
@@ -513,7 +531,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             admins = await context.bot.get_chat_administrators(chat_id=chat_id)
-            
+
             resposta_membros = f"📋 **Membros / Admins do Grupo:** `{chat_title}`\n\n"
             resposta_membros += "⚠️ *Nota: O Telegram restringe o acesso direto à lista completa de membros comuns via Bot API por privacidade. Abaixo estão os administradores ativos detectados neste chat:*\n\n"
 
@@ -540,23 +558,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("cfg_chat_"):
         chat_id_str = data.replace("cfg_chat_", "")
         chat_data = collection_chats.find_one({"chat_id": int(chat_id_str)})
-        
+
         if not chat_data:
             try:
                 await query.answer("❌ Chat não encontrado no banco de dados.", show_alert=True)
             except Exception:
                 pass
             return
-            
+
         try:
             await query.answer()
         except Exception:
             pass
-            
+
         title = chat_data.get("title", "Desconhecido")
         chat_id = chat_data["chat_id"]
         tipo = chat_data.get("type", "grupo")
-        
+
         texto_cfg = (
             f"⚙️ **Configuração do Chat**\n\n"
             f"📌 **Nome:** {title}\n"
@@ -564,12 +582,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 **ID Oficial:** `{chat_id}`\n\n"
             f"👇 Clique no botão abaixo para copiar o ID:"
         )
-        
+
         keyboard = [
             [InlineKeyboardButton("📋 Copiar ID do Chat", copy_text=dict(text=str(chat_id)))],
             [InlineKeyboardButton("🔙 Voltar aos Chats", callback_data="cfg_voltar_lista")]
         ]
-        
+
         try:
             await query.edit_message_text(texto_cfg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         except Exception:
@@ -581,7 +599,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer()
         except Exception:
             pass
-            
+
         chats = list(collection_chats.find({}))
         if not chats:
             try:
@@ -653,12 +671,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 **Valor:** R$ {valor:.2f}\n\n"
                 f"📋 **Código Pix Copia e Cola:**\n`{qr_data}`"
             )
-            
+
             keyboard_final = [
                 [InlineKeyboardButton("📋 Copiar Código Pix", copy_text=dict(text=qr_data))],
                 [InlineKeyboardButton("🔄 Verificar Pagamento", callback_data=f"check_{payment_id}")]
             ]
-            
+
             await query.message.reply_text(
                 msg_completa,
                 parse_mode="Markdown",
@@ -666,11 +684,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.message.reply_text(f"❌ Erro ao gerar o Pix:\n`{response.text[:300]}`", parse_mode="Markdown")
-            
+
     elif data.startswith("check_"):
-        payment_id = data.split("_")[1]       
+        payment_id = data.split("_")[1]
         url = f"https://api.mercadopago.com/v1/payments/{payment_id}"
-        headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}      
+        headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
         try:
             response = requests.get(url, headers=headers, timeout=10)
         except Exception:
@@ -682,21 +700,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await query.answer("🎉 Pagamento Aprovado!", show_alert=True)
                 except Exception:
-                    pass              
+                    pass
 
                 valor_pago = float(resp_data.get("transaction_amount", 0.0))
-                
-                duracao_segundos = 86400  
+
+                duracao_segundos = 86400
                 if valor_pago == 7.0:
                     duracao_segundos = 86400 * 7
                 elif valor_pago == 20.0:
                     duracao_segundos = 86400 * 30
                 elif valor_pago == 60.0:
-                    duracao_segundos = 86400 * 365 * 10  
-                
+                    duracao_segundos = 86400 * 365 * 10
+
                 user_id = update.effective_user.id
                 tempo_expiracao = time.time() + duracao_segundos
-                
+
                 collection_clientes.update_one(
                     {"user_id": user_id},
                     {
@@ -780,7 +798,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Escolha outro plano abaixo:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def gerenciador_assinaturas(application):
-    await asyncio.sleep(10)  
+    await asyncio.sleep(10)
     while True:
         try:
             agora = time.time()
@@ -829,7 +847,7 @@ async def gerenciador_assinaturas(application):
                     try:
                         await application.bot.ban_chat_member(chat_id=CANAL_ALVO_ID, user_id=user_id)
                         await application.bot.unban_chat_member(chat_id=CANAL_ALVO_ID, user_id=user_id)
-                        
+
                         await application.bot.send_message(
                             chat_id=user_id,
                             text="❌ **Seu plano expirou e você foi removido do canal.**\n\n"
@@ -838,39 +856,34 @@ async def gerenciador_assinaturas(application):
                         )
                     except Exception:
                         pass
-                    
+
                     collection_clientes.delete_one({"user_id": user_id})
 
         except Exception as e:
             print(f"Erro no gerenciador: {e}")
 
-        await asyncio.sleep(60)  
+        await asyncio.sleep(60)
 
 def run_background_loop(application):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(gerenciador_assinaturas(application))
 
-# ✅ FUNÇÃO PRINCIPAL CORRIGIDA
+# ✅ FUNÇÃO PRINCIPAL
 def main():
-    # 🔄 INICIA SERVIDOR WEB
     threading.Thread(target=run_web, daemon=True).start()
-    
-    # 🤖 CRIA APLICAÇÃO DO BOT
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    
-    # ✅ REGISTRA BEM-VINDO AQUI, DEPOIS DE CRIAR O APP
+
     try:
         from bemvindo import registrar_bemvindo
         registrar_bemvindo(app)
         print("✅ Módulo bemvindo carregado!")
     except ImportError:
         print("⚠️ Arquivo bemvindo.py não encontrado — seguindo sem ele.")
-    
-    # 🧵 INICIA GERENCIADOR EM SEGUNDO PLANO
+
     threading.Thread(target=run_background_loop, args=(app,), daemon=True).start()
 
-    # 📋 REGISTRA TODOS OS COMANDOS
     app.add_handler(TypeHandler(Update, interceptador_universal), group=-1)
     app.add_handler(ChatMemberHandler(verificar_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CommandHandler("start", start))
@@ -885,8 +898,8 @@ def main():
     app.add_handler(CommandHandler(["suport", "suporte"], suporte_cmd))
     app.add_handler(CommandHandler("addusuario", addusuario_cmd))
     app.add_handler(CommandHandler("delusuario", delusuario_cmd))
-    app.add_handler(CallbackQueryHandler(button_handler))    
-    
+    app.add_handler(CallbackQueryHandler(button_handler))
+
     print("✅ BOT ONLINE E FUNCIONANDO!")
     app.run_polling(drop_pending_updates=False)
 
