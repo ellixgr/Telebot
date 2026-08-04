@@ -19,6 +19,14 @@ from telegram.ext import (
     ChatMemberHandler
 )
 
+# ✅ IMPORTAÇÃO DO BEM-VINDO
+from bemvindo import (
+    cmd_bemvindo,
+    botoes_painel_bv,
+    capturar_dados_bv,
+    novo_membro_handler
+)
+
 app_web = Flask(__name__)
 
 @app_web.route('/')
@@ -68,7 +76,7 @@ bloqueio_temporario = {}
 pagamentos_notificados = set()
 
 # ==============================================
-# ✅ INTERCEPTADOR — IGUAL AO SEU
+# ✅ INTERCEPTADOR — LIBERA /BEMVINDO TAMBÉM!
 # ==============================================
 async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -82,7 +90,7 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
 
     if update.message and update.message.text and update.message.text.startswith('/'):
         cmd = update.message.text.split()[0].split('@')[0].lower()
-        if cmd not in ['/start', '/suporte', '/suport']:
+        if cmd not in ['/start', '/suporte', '/suport', '/bemvindo']:
             raise ApplicationHandlerStop
 
     if user_id in bloqueio_temporario:
@@ -140,7 +148,7 @@ async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT
             print(f"Erro ao atualizar chat no DB: {e}")
 
 # ==============================================
-# ✅ /START — COM SEUS VÍDEOS E SEUS PLANOS
+# ✅ /START — COM NOVO PLANO DE R$ 0,60 (1 HORA)
 # ==============================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
@@ -153,8 +161,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💡 *Precisa de ajuda? Fale com o suporte:* @Lyhhxv"
     )
 
-    # ✅ SEUS PLANOS — IGUAIS AO SEU
+    # ✅ NOVO PLANO ADICIONADO: R$ 0,60 → 1 HORA
     keyboard = [
+        [InlineKeyboardButton("⚡ ACESSO POR 1 HORA → R$ 0,60", callback_data="comprar_0.60")],
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐎𝐑 1 𝐃𝐈𝐀 → R$ 2,50 🔥", callback_data="comprar_2.50")],
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐎𝐑 1 𝐒𝐄𝐌𝐀𝐍𝐀 → R$ 7,00", callback_data="comprar_7.00")],
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐎𝐑 1 𝐌𝐄𝐒 → R$ 20,00", callback_data="comprar_20.00")],
@@ -362,7 +371,7 @@ async def verificar_pagamento(pag_id):
         return False, 0
 
 # ==============================================
-# ✅ BOTÕES — IGUAIS AO SEU
+# ✅ BOTÕES — COM NOVO PLANO DE R$ 0,60
 # ==============================================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -403,8 +412,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if aprovado:
             await query.answer("🎉 Pagamento Aprovado!", show_alert=True)
 
-            # ✅ DEFINE TEMPO PELO VALOR — IGUAL AO SEU
-            if valor_pago == 2.50:
+            # ✅ NOVO PLANO ADICIONADO: R$ 0,60 = 1 HORA (3600 segundos)
+            if valor_pago == 0.60:
+                duracao_segundos = 3600
+                nome_plano = "1 HORA ⚡"
+            elif valor_pago == 2.50:
                 duracao_segundos = 86400
                 nome_plano = "1 Dia 🔥"
             elif valor_pago == 7.00:
@@ -577,7 +589,7 @@ def run_background_loop(application):
     loop.run_until_complete(gerenciador_assinaturas(application))
 
 # ==============================================
-# ✅ INICIO — IGUAL AO SEU
+# ✅ INICIO — COM /BEMVINDO REGISTRADO
 # ==============================================
 def main():
     threading.Thread(target=run_web, daemon=True).start()
@@ -594,9 +606,13 @@ def main():
     app.add_handler(CommandHandler(["suporte", "suport"], suporte_cmd))
     app.add_handler(CommandHandler("addusuario", addusuario_cmd))
     app.add_handler(CommandHandler("delusuario", delusuario_cmd))
+    app.add_handler(CommandHandler("bemvindo", cmd_bemvindo))
+    app.add_handler(CallbackQueryHandler(botoes_painel_bv, pattern=r"^bv_"))
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Sticker.ALL & ~filters.COMMAND & filters.ChatType.PRIVATE, capturar_dados_bv))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, novo_membro_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("𝐓𝐎 𝐎𝐍 BB 😗")
+    print("𝐓𝐎 𝐎𝐍 BB 😗 + /bemvindo + R$0,60 ✅")
     app.run_polling(drop_pending_updates=False)
 
 if __name__ == "__main__":
