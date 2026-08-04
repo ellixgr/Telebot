@@ -20,10 +20,10 @@ LINK_BOT_PADRAO = "https://t.me/Aninhaxv1bot"
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000, tlsAllowInvalidCertificates=True)
 db = mongo_client["sanizinhabot_db"]
 col_bemvindo = db["config_bem_vindo"]
-col_chats = db["chats_autorizados"]  # ✅ REUTILIZA a coleção de grupos do bot
+col_chats = db["chats_autorizados"]
 
 FUSO_BR = timezone(timedelta(hours=-3))
-ESTADOS_FLUXO = {}
+ESTADOS_FLUXO = {}  # (chat_id_destino, user_id) → estado
 
 TEXTO_PADRAO = """👇🏻𝐓𝐄𝐍𝐇𝐀 𝐀𝐂𝐄𝐒𝐒𝐎 𝐀𝐎 𝐆𝐑𝐔𝐏𝐎 𝐕𝐈P💎
 
@@ -37,7 +37,6 @@ TEXTO_PADRAO = """👇🏻𝐓𝐄𝐍𝐇𝐀 𝐀𝐂𝐄𝐒𝐒𝐎 𝐀𝐎
 async def eh_dono_ou_adm(user_id: int) -> bool:
     return str(user_id) == str(DONO_ID)
 
-# ✅ CARREGA DADOS — PADRÃO = DESATIVADO
 def carregar_dados_bv(chat_id: int):
     doc = col_bemvindo.find_one({"chat_id": chat_id})
     if not doc:
@@ -74,7 +73,6 @@ def salvar_bv(chat_id: int, campo: str, valor):
         valor = serial
     col_bemvindo.update_one({"chat_id": chat_id}, {"$set": {campo: valor}}, upsert=True)
 
-# ✅ ALTERNA E RETORNA O STATUS NOVO
 def alternar_status(chat_id: int) -> bool:
     doc = col_bemvindo.find_one({"chat_id": chat_id})
     status_atual = doc.get("status", False) if doc else False
@@ -114,15 +112,12 @@ async def formatar_texto(chat_id: int, usuario, context: ContextTypes.DEFAULT_TY
         texto_base = texto_base.replace(chave, val)
     return texto_base
 
-# ✅ ENVIA BOAS-VINDAS — SÓ SE ESTIVER ATIVADO
 async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DEFAULT_TYPE):
     _, midia, botoes, status = carregar_dados_bv(chat_id)
-    
     if not status:
         return
 
     texto_final = await formatar_texto(chat_id, usuario, context)
-    
     if not botoes:
         botoes = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ACESSAR CONTEÚDO 💎", url=LINK_BOT_PADRAO)]])
 
@@ -130,7 +125,6 @@ async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DE
         if midia:
             tipo, file_id, legenda = midia
             legenda_completa = f"{legenda}\n\n{texto_final}" if legenda else texto_final
-            
             if tipo == "photo":
                 await context.bot.send_photo(chat_id, file_id, caption=legenda_completa, reply_markup=botoes, parse_mode="HTML")
             elif tipo == "video":
@@ -147,21 +141,18 @@ async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DE
         except:
             pass
 
-# ✅ QUANDO ALGUÉM ENTRA — CORRIGIDO O HANDLER
 async def novo_membro_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     novos_membros = update.message.new_chat_members
     if not novos_membros:
         return
-    
     chat_id = update.effective_chat.id
     for membro in novos_membros:
         if membro.is_bot:
             continue
         await enviar_bemvindo_membro(chat_id, membro, context)
 
-# ✅ PAINEL PRINCIPAL DE CONFIGURAÇÃO DO GRUPO ESCOLHIDO
 async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, msg_ref=None, aviso=""):
     texto, midia, botoes, status = carregar_dados_bv(chat_id)
     status_emoji = "🟢 Ativado" if status else "🔴 Desativado"
@@ -205,7 +196,6 @@ async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, c
     else:
         await update.message.reply_text(mensagem, reply_markup=teclado, parse_mode="Markdown")
 
-# ✅ === LISTA DE GRUPOS PRA ESCOLHER ===
 async def listar_grupos_para_escolher(update: Update, context: ContextTypes.DEFAULT_TYPE):
     grupos = list(col_chats.find({"$or": [{"type": "group"}, {"type": "supergroup"}, {"type": "channel"}]}))
     
@@ -237,7 +227,6 @@ async def listar_grupos_para_escolher(update: Update, context: ContextTypes.DEFA
         parse_mode="Markdown"
     )
 
-# ✅ COMANDO /bemvindo — AGORA MOSTRA A LISTA DE GRUPOS!
 async def cmd_bemvindo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_tipo = update.effective_chat.type
@@ -249,10 +238,8 @@ async def cmd_bemvindo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Use este comando aqui no privado do bot!")
         return
 
-    # ✅ AGORA MOSTRA A LISTA DE GRUPOS PRA ESCOLHER
     await listar_grupos_para_escolher(update, context)
 
-# ✅ TRATA TODOS OS BOTÕES — COM ID DO GRUPO INCLUÍDO
 async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -263,21 +250,19 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("❌ Apenas o dono!", show_alert=True)
         return
 
-    # ✅ VOLTAR PRA LISTA DE GRUPOS
     if dados == "bv_voltar_grupos":
         await listar_grupos_para_escolher(query, context)
         return
 
-    # ✅ ESCOLHEU UM GRUPO DA LISTA
     if dados.startswith("bv_grupo_"):
         chat_id = int(dados.replace("bv_grupo_", ""))
         await painel_principal(update, context, chat_id, msg_ref=query.message)
         return
 
-    # ✅ EXTRAI O ID DO GRUPO DO FINAL DO callback_data
     try:
-        chat_id = int(dados.split("_")[-1])
-        acao = "_".join(dados.split("_")[:-1])
+        partes = dados.split("_")
+        chat_id = int(partes[-1])
+        acao = "_".join(partes[:-1])
     except:
         return
 
@@ -380,37 +365,44 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ESTADOS_FLUXO.pop((chat_id, user_id), None)
         await painel_principal(update, context, chat_id, msg_ref=query.message)
 
+# ✅ CORRIGIDO: AGORA SALVA NO GRUPO CERTO!
 async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
+    chat_id_msg = update.effective_chat.id  # SEMPRE O PRIVADO
     user_id = update.effective_user.id
-    chave = (chat_id, user_id)
 
-    if chave not in ESTADOS_FLUXO:
-        return
+    # Procura qual grupo está sendo configurado
+    chave_alvo = None
+    for (grupo_id, uid) in ESTADOS_FLUXO.keys():
+        if uid == user_id:
+            chave_alvo = (grupo_id, uid)
+            break
 
-    estado = ESTADOS_FLUXO.pop(chave)
+    if not chave_alvo:
+        return  # Nenhuma configuração pendente
+
+    alvo_chat, _ = chave_alvo
+    estado = ESTADOS_FLUXO.pop(chave_alvo)
     aviso = ""
-    alvo_chat = chave[0]
 
     if estado == "aguardando_texto":
         texto = update.message.text or update.message.caption or ""
         salvar_bv(alvo_chat, "texto", texto)
-        aviso = "✅ **TEXTO SALVO! Substituído com sucesso!**"
+        aviso = "✅ **TEXTO SALVO COM SUCESSO!** ✅"
 
     elif estado == "aguardando_midia":
         legenda = update.message.caption or ""
         if update.message.photo:
             arquivo = update.message.photo[-1]
             salvar_bv(alvo_chat, "midia", ("photo", arquivo.file_id, legenda))
-            aviso = "✅ **FOTO SALVA! Substituída a anterior!**"
+            aviso = "✅ **FOTO SALVA!** ✅"
         elif update.message.video:
             arquivo = update.message.video
             salvar_bv(alvo_chat, "midia", ("video", arquivo.file_id, legenda))
-            aviso = "✅ **VÍDEO SALVO! Substituído o anterior!**"
+            aviso = "✅ **VÍDEO SALVO!** ✅"
         elif update.message.sticker:
             arquivo = update.message.sticker
             salvar_bv(alvo_chat, "midia", ("sticker", arquivo.file_id, legenda))
-            aviso = "✅ **FIGURINHA SALVA! Substituída a anterior!**"
+            aviso = "✅ **FIGURINHA SALVA!** ✅"
 
     elif estado == "aguardando_botao":
         texto = update.message.text or ""
@@ -426,7 +418,6 @@ async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(aviso, parse_mode="Markdown")
         await painel_principal(update, context, alvo_chat)
 
-# ✅ === REGISTRAR TUDO ===
 def registrar_bemvindo(application):
     application.add_handler(CommandHandler("bemvindo", cmd_bemvindo))
     application.add_handler(CallbackQueryHandler(botoes_painel, pattern=r"^bv_"))
