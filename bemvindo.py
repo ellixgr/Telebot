@@ -240,7 +240,8 @@ async def cmd_bemvindo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await listar_grupos_para_escolher(update, context)
 
-async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ✅ RENOMEADO para botoes_painel_bv
+async def botoes_painel_bv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     dados = query.data
@@ -365,12 +366,11 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ESTADOS_FLUXO.pop((chat_id, user_id), None)
         await painel_principal(update, context, chat_id, msg_ref=query.message)
 
-# ✅ CORRIGIDO: AGORA SALVA NO GRUPO CERTO!
-async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id_msg = update.effective_chat.id  # SEMPRE O PRIVADO
+# ✅ RENOMEADO para capturar_dados_bv
+async def capturar_dados_bv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id_msg = update.effective_chat.id
     user_id = update.effective_user.id
 
-    # Procura qual grupo está sendo configurado
     chave_alvo = None
     for (grupo_id, uid) in ESTADOS_FLUXO.keys():
         if uid == user_id:
@@ -378,7 +378,7 @@ async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     if not chave_alvo:
-        return  # Nenhuma configuração pendente
+        return
 
     alvo_chat, _ = chave_alvo
     estado = ESTADOS_FLUXO.pop(chave_alvo)
@@ -417,15 +417,3 @@ async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if aviso:
         await update.message.reply_text(aviso, parse_mode="Markdown")
         await painel_principal(update, context, alvo_chat)
-
-def registrar_bemvindo(application):
-    application.add_handler(CommandHandler("bemvindo", cmd_bemvindo))
-    application.add_handler(CallbackQueryHandler(botoes_painel, pattern=r"^bv_"))
-    application.add_handler(MessageHandler(
-        filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Sticker.ALL & ~filters.COMMAND & filters.ChatType.PRIVATE,
-        capturar_dados
-    ))
-    application.add_handler(MessageHandler(
-        filters.StatusUpdate.NEW_CHAT_MEMBERS,
-        novo_membro_handler
-    ))
