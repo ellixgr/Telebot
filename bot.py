@@ -35,8 +35,6 @@ def run_web():
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 MP_ACCESS_TOKEN = os.environ.get("MP_ACCESS_TOKEN")
 
-# ⚠️ Se a chave estiver no Render → USA A DO RENDER
-# Se NÃO estiver → usa o valor abaixo como reserva
 DONO_ID = int(os.environ.get("DONO_ID", "7711945457"))
 CANAL_ALVO_ID = int(os.environ.get("CANAL_ALVO_ID", "-1004399892914"))
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -84,10 +82,9 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
     if user_id == DONO_ID:
         return
 
-    # ✅ LIBERA /START SEMPRE — NÃO BLOQUEIA NUNCA!
     if update.message and update.message.text and update.message.text.startswith('/'):
         cmd = update.message.text.split()[0].split('@')[0].lower()
-        if cmd in ['/start', '/suporte', '/suport', '/id', '/ping']:
+        if cmd in ['/start', '/suporte', '/suport', '/id', '/ping', '/bemvindo']:
             pass
         else:
             raise ApplicationHandlerStop
@@ -147,7 +144,7 @@ async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT
             print(f"Erro ao salvar chat: {e}")
 
 # ==============================================
-# ✅ /START — MOSTRA O ERRO NO CHAT!
+# ✅ /START
 # ==============================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
@@ -355,7 +352,7 @@ async def verificar_pagamento(pag_id):
         return False, 0
 
 # ==============================================
-# ✅ BOTÕES E PAGAMENTO
+# ✅ BOTÕES E PAGAMENTO — CORRIGIDO SEM copy_text!
 # ==============================================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -379,8 +376,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 **Valor:** R$ {valor:.2f}\n\n"
                 f"📋 **Código Pix Copia e Cola:**\n`{qr}`"
             )
+            # ✅ REMOVI O copy_text que estava dando ERRO!
             keyboard_final = [
-                [InlineKeyboardButton("📋 Copiar Código Pix", copy_text=qr)],
                 [InlineKeyboardButton("🔄 Verificar Pagamento", callback_data=f"check_{pag_id}")]
             ]
             await query.message.reply_text(msg_completa, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_final))
@@ -520,7 +517,7 @@ def run_background_loop(application):
     loop.run_until_complete(gerenciador_assinaturas(application))
 
 # ==============================================
-# ✅ INÍCIO
+# ✅ INÍCIO — COM /bemvindo LIBERADO!
 # ==============================================
 def main():
     threading.Thread(target=run_web, daemon=True).start()
