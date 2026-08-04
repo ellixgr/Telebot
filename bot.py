@@ -30,15 +30,18 @@ def run_web():
     app_web.run(host="0.0.0.0", port=port)
 
 # ==============================================
-# ✅ SUAS CONFIGURAÇÕES
+# ✅ PEGA TUDO DAS VARIÁVEIS DO RENDER!
 # ==============================================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 MP_ACCESS_TOKEN = os.environ.get("MP_ACCESS_TOKEN")
-DONO_ID = int(os.environ.get("DONO_ID", 7711945457))
-CANAL_ALVO_ID = int(os.environ.get("CANAL_ALVO_ID", -1004399892914))
+
+# ⚠️ Se a chave estiver no Render → USA A DO RENDER
+# Se NÃO estiver → usa o valor abaixo como reserva
+DONO_ID = int(os.environ.get("DONO_ID", "7711945457"))
+CANAL_ALVO_ID = int(os.environ.get("CANAL_ALVO_ID", "-1004399892914"))
 MONGO_URI = os.environ.get("MONGO_URI")
 
-# ✅ SEUS VÍDEOS DO START
+# ✅ VÍDEOS DO /START
 LISTA_VIDEOS_START = [
     "https://ellixgr.github.io/x23wzp/VN20260728_020021.mp4",
     "https://ellixgr.github.io/x23wzp/VN20260728_015729.mp4"
@@ -69,7 +72,7 @@ bloqueio_temporario = {}
 pagamentos_notificados = set()
 
 # ==============================================
-# ✅ INTERCEPTADOR CORRIGIDO — NÃO BLOQUEIA /START
+# ✅ INTERCEPTADOR — NÃO BLOQUEIA /START
 # ==============================================
 async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -85,7 +88,7 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
     if update.message and update.message.text and update.message.text.startswith('/'):
         cmd = update.message.text.split()[0].split('@')[0].lower()
         if cmd in ['/start', '/suporte', '/suport', '/id', '/ping']:
-            pass  # ✅ Deixa passar
+            pass
         else:
             raise ApplicationHandlerStop
 
@@ -99,7 +102,6 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
     if user_id in usuarios_bloqueados:
         raise ApplicationHandlerStop
 
-    # ✅ Anti-spam mais permissivo
     if user_id in ultimo_envio:
         if agora - ultimo_envio[user_id] < 0.4:
             contador_spam[user_id] = contador_spam.get(user_id, 0) + 1
