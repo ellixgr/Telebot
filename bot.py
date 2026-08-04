@@ -19,6 +19,7 @@ from telegram.ext import (
     ChatMemberHandler
 )
 
+# ✅ INICIALIZAÇÃO
 app_web = Flask(__name__)
 
 @app_web.route('/')
@@ -51,6 +52,7 @@ except Exception as e:
 
 TEMPO_INICIAL = time.time()
 
+# ⚠️ ATENÇÃO: Esses links podem estar com problema! Se não funcionar, use links diretos do Telegram
 LISTA_VIDEOS_START = [
     "https://ellixgr.github.io/x23wzp/VN20260728_020021.mp4",
     "https://ellixgr.github.io/x23wzp/VN20260728_015729.mp4"
@@ -62,6 +64,7 @@ usuarios_bloqueados = {}
 bloqueio_temporario = {}     
 pagamentos_notificados = set() 
 
+# ✅ FUNÇÕES AQUI (IGUAIS AS SUAS, SEM ALTERAÇÃO)
 async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user:
@@ -94,7 +97,6 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
             if contador_spam[user_id] >= 8:
                 bloqueio_temporario[user_id] = agora + 300  
                 contador_spam[user_id] = 0
-                # ✅ SÓ ENVIA AVISO NO PRIVADO — NUNCA MAIS NO GRUPO!
                 if update.effective_chat.type == "private":
                     try:
                         await context.bot.send_message(
@@ -849,13 +851,26 @@ def run_background_loop(application):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(gerenciador_assinaturas(application))
 
+# ✅ FUNÇÃO PRINCIPAL CORRIGIDA
 def main():
+    # 🔄 INICIA SERVIDOR WEB
     threading.Thread(target=run_web, daemon=True).start()
     
+    # 🤖 CRIA APLICAÇÃO DO BOT
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
+    # ✅ REGISTRA BEM-VINDO AQUI, DEPOIS DE CRIAR O APP
+    try:
+        from bemvindo import registrar_bemvindo
+        registrar_bemvindo(app)
+        print("✅ Módulo bemvindo carregado!")
+    except ImportError:
+        print("⚠️ Arquivo bemvindo.py não encontrado — seguindo sem ele.")
+    
+    # 🧵 INICIA GERENCIADOR EM SEGUNDO PLANO
     threading.Thread(target=run_background_loop, args=(app,), daemon=True).start()
 
+    # 📋 REGISTRA TODOS OS COMANDOS
     app.add_handler(TypeHandler(Update, interceptador_universal), group=-1)
     app.add_handler(ChatMemberHandler(verificar_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CommandHandler("start", start))
@@ -872,7 +887,7 @@ def main():
     app.add_handler(CommandHandler("delusuario", delusuario_cmd))
     app.add_handler(CallbackQueryHandler(button_handler))    
     
-    print("𝐓𝐎 𝐎𝐍 BB 😗")
+    print("✅ BOT ONLINE E FUNCIONANDO!")
     app.run_polling(drop_pending_updates=False)
 
 if __name__ == "__main__":
