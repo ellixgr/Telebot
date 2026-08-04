@@ -1,7 +1,5 @@
 import os
 import logging
-import random
-import asyncio
 from datetime import datetime, timezone, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -16,7 +14,6 @@ logger = logging.getLogger("SanizinhaBot.BemVindo")
 
 # ✅ DADOS DO SEU BOT
 DONO_ID = int(os.getenv("DONO_ID", "7711945457"))
-GRUPO_MIDIAS_ID = -1004399892914  # ← Grupo de onde pega as mídias
 LINK_BOT = "https://t.me/Aninhaxv1bot"
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -62,7 +59,7 @@ def alternar_status(chat_id: int) -> bool:
     salvar_bv(chat_id, "status", novo)
     return novo
 
-# ✅ === COMANDO /bemvindo — SÓ FUNCIONA NO PRIVADO E SÓ P/ O DONO ===
+# ✅ === COMANDO /bemvindo ===
 async def cmd_bemvindo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_tipo = update.effective_chat.type
@@ -113,7 +110,6 @@ async def abrir_painel_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE,
     teclado = InlineKeyboardMarkup([
         [InlineKeyboardButton("📝 Editar Texto", callback_data=f"bv_edtxt_{chat_alvo_id}"),
          InlineKeyboardButton("👀 Ver Texto", callback_data=f"bv_vertxt_{chat_alvo_id}")],
-        [InlineKeyboardButton("⚡ BOAS-VINDAS RÁPIDAS", callback_data=f"bv_rapida_{chat_alvo_id}")],
         [InlineKeyboardButton("🟢 Ativar" if not status else "🔴 Desativar", callback_data=f"bv_toggle_{chat_alvo_id}")],
         [InlineKeyboardButton("🔙 Voltar", callback_data="bv_voltar")]
     ])
@@ -121,8 +117,7 @@ async def abrir_painel_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE,
     msg_texto = (
         f"🎛 **Boas-Vindas — Grupo: `{chat_alvo_id}`**\n\n"
         f"Status: {status_emoji}\n"
-        f"Texto personalizado: {tem_texto}\n\n"
-        f"⚡ **Boas-Vindas Rápidas** = Envia mídia ALEATÓRIA do grupo + botão → {LINK_BOT}"
+        f"Texto personalizado: {tem_texto}"
     )
 
     if msg_ref:
@@ -130,101 +125,22 @@ async def abrir_painel_grupo(update: Update, context: ContextTypes.DEFAULT_TYPE,
     else:
         await update.callback_query.message.edit_text(msg_texto, reply_markup=teclado, parse_mode="Markdown")
 
-# ✅ === PEGA MÍDIA COM RENOVAÇÃO DE LINK — IGUAL AO SEU CÓDIGO DE DOWNLOAD ===
-async def buscar_midia_aleatoria_segura(context: ContextTypes.DEFAULT_TYPE, tentativas=5):
-    """🔄 Pega mídia RENOVANDO o link a cada tentativa — funciona em grupo PRIVADO"""
-    for tentativa in range(tentativas):
-        try:
-            midias_validas = []
-            # ✅ LÊ O HISTÓRICO → RENOVA OS LINKS AUTOMATICAMENTE
-            async for msg in context.bot.get_chat_history(GRUPO_MIDIAS_ID, limit=150):
-                if msg.photo:
-                    foto = msg.photo[-1]
-                    tamanho_mb = (foto.file_size or 0) / 1048576
-                    if tamanho_mb <= 2.0:
-                        midias_validas.append(("photo", foto.file_id))
-                elif msg.video and not msg.video.is_animation:
-                    tamanho_mb = (msg.video.file_size or 0) / 1048576
-                    if tamanho_mb <= 2.0:
-                        midias_validas.append(("video", msg.video.file_id))
-                if len(midias_validas) >= 20:
-                    break
-
-            if midias_validas:
-                escolhida = random.choice(midias_validas)
-                logger.info(f"✅ Mídia encontrada! Tentativa {tentativa+1}")
-                return escolhida
-
-            logger.warning(f"⚠️ Nenhuma mídia encontrada — tentativa {tentativa+1}/{tentativas}")
-            await asyncio.sleep(3 + tentativa * 2)
-
-        except Exception as e:
-            erro = str(e).lower()
-            logger.error(f"⚠️ Erro na tentativa {tentativa+1}: {erro[:80]}")
-
-            # 🔄 LINK EXPIRADO → ESPERA E TENTA DE NOVO
-            if "file_reference_expired" in erro or "expired" in erro or "not found" in erro:
-                logger.info("🔄 Link expirado — renovando...")
-                await asyncio.sleep(4 + tentativa * 3)
-                continue
-
-            # ⏱️ LIMITE DO TELEGRAM
-            if "flood" in erro or "retry" in erro:
-                await asyncio.sleep(15)
-                continue
-
-            await asyncio.sleep(5)
-
-    logger.error("❌ FALHOU APÓS TODAS AS TENTATIVAS")
-    return None
-
-# ✅ === BOAS-VINDAS RÁPIDAS — ENVIA MÍDIA + TEXTO ===
-async def boas_vindas_rapidas(chat_id_novo_membro, context: ContextTypes.DEFAULT_TYPE):
-    """Executado automaticamente quando alguém entra"""
-    texto_personalizado, _ = carregar_dados_bv(chat_id_novo_membro)
+# ✅ === ENVIA BOAS-VINDAS — SÓ TEXTO + BOTÃO ===
+async def enviar_bemvindo(chat_id_destino, context: ContextTypes.DEFAULT_TYPE):
+    """Envia só o texto + botão — sem tentar pegar mídia nenhuma"""
+    texto_personalizado, _ = carregar_dados_bv(chat_id_destino)
     texto_final = texto_personalizado if texto_personalizado else TEXTO_BEMVINDO
 
     teclado = InlineKeyboardMarkup([
         [InlineKeyboardButton("💎 ACESSAR CONTEÚDO 💎", url=LINK_BOT)]
     ])
 
-    # ✅ PEGA MÍDIA COM RENOVAÇÃO AUTOMÁTICA
-    midia_escolhida = await buscar_midia_aleatoria_segura(context)
-
-    try:
-        if midia_escolhida:
-            tipo, file_id = midia_escolhida
-            if tipo == "photo":
-                await context.bot.send_photo(
-                    chat_id_novo_membro,
-                    file_id,
-                    caption=texto_final,
-                    reply_markup=teclado,
-                    parse_mode="Markdown"
-                )
-            elif tipo == "video":
-                await context.bot.send_video(
-                    chat_id_novo_membro,
-                    file_id,
-                    caption=texto_final,
-                    reply_markup=teclado,
-                    parse_mode="Markdown",
-                    supports_streaming=True
-                )
-        else:
-            # ✅ Se não conseguir mídia, envia só o texto
-            await context.bot.send_message(
-                chat_id_novo_membro,
-                texto_final,
-                reply_markup=teclado,
-                parse_mode="Markdown"
-            )
-    except Exception as e:
-        logger.error(f"❌ Erro ao enviar boas-vindas: {e}")
-        try:
-            await context.bot.send_message(chat_id_novo_membro, texto_final, reply_markup=teclado, parse_mode="Markdown")
-        except Exception as e2:
-            logger.error(f"❌ Falha total: {e2}")
+    await context.bot.send_message(
+        chat_id_destino,
+        texto_final,
+        reply_markup=teclado,
+        parse_mode="Markdown"
+    )
 
 # ✅ === QUANDO ALGUÉM ENTRA NO GRUPO ===
 async def novo_membro_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,7 +155,7 @@ async def novo_membro_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     for membro in update.message.new_chat_members:
         if membro.is_bot:
             continue
-        await boas_vindas_rapidas(chat_id, context)
+        await enviar_bemvindo(chat_id, context)
 
 # ✅ === TRATA TODOS OS BOTÕES ===
 async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -285,20 +201,6 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    elif dados.startswith("bv_rapida_"):
-        gid = int(dados.replace("bv_rapida_", ""))
-        salvar_bv(gid, "modo_rapido", True)
-        await query.message.edit_text(
-            "✅ **BOAS-VINDAS RÁPIDAS ATIVADAS!** ⚡\n\n"
-            "Quando alguém entrar:\n"
-            "📸 Pega 1 foto/vídeo ALEATÓRIO (até 2MB) do grupo de mídias\n"
-            "🔄 RENOVA O LINK AUTOMATICAMENTE (funciona em grupo privado)\n"
-            "💎 Envia com botão → " + LINK_BOT + "\n\n"
-            "Pronto! É só isso!",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data=f"bv_config_{gid}")]]),
-            parse_mode="Markdown"
-        )
-
     elif dados == "bv_voltar":
         await listar_grupos_para_escolher(update, context)
 
@@ -319,7 +221,6 @@ async def capturar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if estado == "bv_texto":
         texto = update.message.text or update.message.caption or ""
         salvar_bv(gid, "texto", texto)
-        salvar_bv(gid, "modo_rapido", False)
         await update.message.reply_text("✅ **TEXTO SALVO COM SUCESSO!** ✅", parse_mode="Markdown")
         await abrir_painel_grupo(update, context, gid)
 
