@@ -13,7 +13,6 @@ from pymongo import MongoClient
 
 logger = logging.getLogger("SanizinhaBot.BemVindo")
 
-# ✅ DADOS DO SEU BOT
 DONO_ID = int(os.getenv("DONO_ID", "7711945457"))
 MONGO_URI = os.getenv("MONGO_URI")
 LINK_BOT_PADRAO = "https://t.me/Aninhaxv1bot"
@@ -25,7 +24,6 @@ col_bemvindo = db["config_bem_vindo"]
 FUSO_BR = timezone(timedelta(hours=-3))
 ESTADOS_FLUXO = {}
 
-# ✅ TEXTO PADRÃO DE BOAS-VINDAS
 TEXTO_PADRAO = """👇🏻𝐓𝐄𝐍𝐇𝐀 𝐀𝐂𝐄𝐒𝐒𝐎 𝐀𝐎 𝐆𝐑𝐔𝐏𝐎 𝐕𝐈P💎
 
 ♦️ 𝗔𝗰𝗲𝘀𝘀𝗼 𝗮 𝗺𝗶𝗹𝗵𝗮𝗿𝗲𝘀 𝗱𝗲 𝗰𝗼𝗻𝘁𝗲𝘂‌𝗱𝗼𝘀
@@ -35,15 +33,14 @@ TEXTO_PADRAO = """👇🏻𝐓𝐄𝐍𝐇𝐀 𝐀𝐂𝐄𝐒𝐒𝐎 𝐀𝐎
 💋 𝗙𝗮𝗺𝗼𝘀𝗮𝘀 / 𝗣𝗿𝗶𝘃𝗮𝗰𝘆 / 𝗢𝗻𝗹𝘆𝗙𝗮𝗻𝘀
 🫦 𝗘𝘅𝗰𝗹𝘂𝘀𝗶𝘃𝗼𝘀 𝘀𝗲𝗹𝗲𝗰𝗶𝗼𝗻𝗮𝗱𝗼𝘀"""
 
-# ✅ VERIFICA SE É DONO/ADM
 async def eh_dono_ou_adm(user_id: int) -> bool:
     return str(user_id) == str(DONO_ID)
 
-# ✅ === CORRIGIDO: SE NÃO EXISTIR NO BANCO → DESATIVADO POR PADRÃO ===
+# ✅ CARREGA DADOS — PADRÃO = DESATIVADO
 def carregar_dados_bv(chat_id: int):
     doc = col_bemvindo.find_one({"chat_id": chat_id})
     if not doc:
-        return None, None, None, False  # ✅ ANTES ERA True → AGORA É False
+        return None, None, None, False
     texto = doc.get("texto")
     midia = doc.get("midia")
     if midia:
@@ -59,10 +56,9 @@ def carregar_dados_bv(chat_id: int):
                     linha_botoes.append(InlineKeyboardButton(b["text"], url=b["url"]))
             teclado.append(linha_botoes)
         botoes = InlineKeyboardMarkup(teclado)
-    status = doc.get("status", False)  # ✅ PADRÃO AGORA É DESATIVADO
+    status = doc.get("status", False)
     return texto, midia, botoes, status
 
-# ✅ SALVA NO BANCO
 def salvar_bv(chat_id: int, campo: str, valor):
     if campo == "botoes" and isinstance(valor, InlineKeyboardMarkup):
         serial = []
@@ -77,7 +73,7 @@ def salvar_bv(chat_id: int, campo: str, valor):
         valor = serial
     col_bemvindo.update_one({"chat_id": chat_id}, {"$set": {campo: valor}}, upsert=True)
 
-# ✅ ALTERNA STATUS ATIVAR/DESATIVAR
+# ✅ ALTERNA E RETORNA O STATUS NOVO
 def alternar_status(chat_id: int) -> bool:
     doc = col_bemvindo.find_one({"chat_id": chat_id})
     status_atual = doc.get("status", False) if doc else False
@@ -85,7 +81,6 @@ def alternar_status(chat_id: int) -> bool:
     salvar_bv(chat_id, "status", novo)
     return novo
 
-# ✅ FORMATA O TEXTO COM AS VARIÁVEIS
 async def formatar_texto(chat_id: int, usuario, context: ContextTypes.DEFAULT_TYPE):
     texto_base, _, _, _ = carregar_dados_bv(chat_id)
     if not texto_base:
@@ -118,19 +113,15 @@ async def formatar_texto(chat_id: int, usuario, context: ContextTypes.DEFAULT_TY
         texto_base = texto_base.replace(chave, val)
     return texto_base
 
-# ✅ === ENVIAR BOAS-VINDAS — VERIFICA STATUS ANTES DE TUDO ===
+# ✅ ENVIA BOAS-VINDAS — SÓ SE ESTIVER ATIVADO
 async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DEFAULT_TYPE):
-    _, _, _, status = carregar_dados_bv(chat_id)
+    _, midia, botoes, status = carregar_dados_bv(chat_id)
     
-    # ✅ SE ESTIVER DESATIVADO → NÃO ENVIA NADA! PONTO FINAL!
     if not status:
-        logger.info(f"ℹ️ Boas-vindas DESATIVADAS no chat {chat_id} — ignorando")
         return
 
     texto_final = await formatar_texto(chat_id, usuario, context)
     
-    # Se não tem botão salvo → usa o padrão
-    _, midia, botoes, _ = carregar_dados_bv(chat_id)
     if not botoes:
         botoes = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ACESSAR CONTEÚDO 💎", url=LINK_BOT_PADRAO)]])
 
@@ -149,29 +140,37 @@ async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DE
         else:
             await context.bot.send_message(chat_id, texto_final, reply_markup=botoes, parse_mode="HTML")
     except Exception as e:
-        logger.error(f"❌ Erro ao enviar boas-vindas: {e}")
+        logger.error(f"Erro ao enviar boas-vindas: {e}")
         try:
             await context.bot.send_message(chat_id, texto_final, reply_markup=botoes, parse_mode="HTML")
         except:
             pass
 
-# ✅ === QUANDO ALGUÉM ENTRA NO GRUPO ===
+# ✅ QUANDO ALGUÉM ENTRA — CORRIGIDO O HANDLER
 async def novo_membro_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.new_chat_members:
+    # ✅ FUNCIONA NOS DOIS TIPOS DE GRUPO
+    if not update.message:
         return
+    novos_membros = update.message.new_chat_members
+    if not novos_membros:
+        return
+    
     chat_id = update.effective_chat.id
-    for membro in update.message.new_chat_members:
+    for membro in novos_membros:
         if membro.is_bot:
             continue
         await enviar_bemvindo_membro(chat_id, membro, context)
 
-# ✅ === PAINEL PRINCIPAL ===
+# ✅ PAINEL PRINCIPAL COM BOTÃO CERTO
 async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, msg_ref=None, aviso=""):
     texto, midia, botoes, status = carregar_dados_bv(chat_id)
     status_emoji = "🟢 Ativado" if status else "🔴 Desativado"
     tem_texto = "✅" if texto else "❌ (usará padrão)"
     tem_midia = "✅" if midia else "❌"
     tem_botao = "✅" if botoes else "❌ (usará padrão)"
+
+    # ✅ BOTÃO MUDAA CONFORME STATUS — AGORA CERTO!
+    texto_botao_status = "🔴 Desativar" if status else "🟢 Ativar"
 
     teclado = InlineKeyboardMarkup([
         [InlineKeyboardButton("📝 Editar Texto", callback_data="bv_edtxt"),
@@ -180,7 +179,7 @@ async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, c
          InlineKeyboardButton("👀 Ver Mídia", callback_data="bv_vermidia")],
         [InlineKeyboardButton("🔲 Editar Botão URL", callback_data="bv_edbotao"),
          InlineKeyboardButton("👀 Ver Botão", callback_data="bv_verbotao")],
-        [InlineKeyboardButton("🟢 Ativar" if status else "🔴 Desativar", callback_data="bv_toggle")]
+        [InlineKeyboardButton(texto_botao_status, callback_data="bv_toggle")]
     ])
 
     mensagem = (
@@ -199,7 +198,6 @@ async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, c
     else:
         await update.message.reply_text(mensagem, reply_markup=teclado, parse_mode="Markdown")
 
-# ✅ === COMANDO /bemvindo ===
 async def cmd_bemvindo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_tipo = update.effective_chat.type
@@ -213,7 +211,7 @@ async def cmd_bemvindo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await painel_principal(update, context, update.effective_chat.id)
 
-# ✅ === TRATA TODOS OS BOTÕES DO PAINEL ===
+# ✅ TRATA BOTÕES — CONSERTADO O STATUS
 async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -226,9 +224,9 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if dados == "bv_toggle":
-        alternar_status(chat_id)
-        _, _, _, status_novo = carregar_dados_bv(chat_id)
-        aviso = "✅ **ATIVADO!** Agora vai enviar!" if status_novo else "🔴 **DESATIVADO!** Não vai enviar mais nada!"
+        # ✅ MUDA O STATUS E RECARREGA ANTES DE MOSTRAR
+        novo_status = alternar_status(chat_id)
+        aviso = "✅ **ATIVADO!** Agora vai enviar!" if novo_status else "🔴 **DESATIVADO!** Não vai enviar mais nada!"
         await painel_principal(update, context, chat_id, msg_ref=query.message, aviso=aviso)
 
     elif dados == "bv_edtxt":
@@ -248,8 +246,7 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ESTADOS_FLUXO[(chat_id, user_id)] = "aguardando_midia"
         await query.message.edit_text(
             "🎞️ **Agora envie uma foto, vídeo ou figurinha!**\n\n"
-            "Pode colocar legenda junto se quiser.\n"
-            "👉 A mídia antiga será substituída automaticamente!",
+            "Pode colocar legenda junto se quiser.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Cancelar", callback_data="bv_cancelar")]]),
             parse_mode="Markdown"
         )
@@ -264,38 +261,72 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ✅ === VER TEXTO — MOSTRA O TEXTO INTEIRO ===
     elif dados == "bv_vertxt":
         texto, _, _, _ = carregar_dados_bv(chat_id)
-        txt = texto or f"📄 **Usando texto PADRÃO do sistema:**\n\n{TEXTO_PADRAO}"
+        if not texto:
+            texto = f"📄 **USANDO TEXTO PADRÃO:**\n\n{TEXTO_PADRAO}"
         await query.message.edit_text(
-            f"📄 **Texto atual:**\n\n{txt}",
+            f"📄 **TEXTO QUE SERÁ ENVIADO:**\n\n{texto}",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
             parse_mode="Markdown"
         )
 
+    # ✅ === VER MÍDIA — ENVIA A MÍDIA DE VERDADE ===
     elif dados == "bv_vermidia":
         _, midia, _, _ = carregar_dados_bv(chat_id)
-        txt = f"✅ Mídia salva: {midia[0].upper()}" if midia else "❌ Nenhuma mídia salva."
-        await query.message.edit_text(
-            f"🎞️ **Mídia atual:**\n\n{txt}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
-            parse_mode="Markdown"
-        )
+        if not midia:
+            await query.message.edit_text(
+                "❌ **Nenhuma mídia salva.**\nSerá enviado apenas o texto.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
+                parse_mode="Markdown"
+            )
+        else:
+            tipo, file_id, legenda = midia
+            info = f"🎞️ **MÍDIA SALVA:** {tipo.upper()}\n\n"
+            if legenda:
+                info += f"📝 **Legenda:** {legenda}\n\n"
+            info += "✅ Enviando a mídia abaixo EXATAMENTE como aparecerá para o novo membro:"
+            await query.message.edit_text(info, parse_mode="Markdown")
+            # ✅ ENVIA A MÍDIA DE VERDADE PRA VOCÊ VER
+            try:
+                if tipo == "photo":
+                    await query.message.reply_photo(file_id, caption=legenda or "📸 Foto que será enviada")
+                elif tipo == "video":
+                    await query.message.reply_video(file_id, caption=legenda or "🎬 Vídeo que será enviado", supports_streaming=True)
+                elif tipo == "sticker":
+                    await query.message.reply_sticker(file_id)
+                    await query.message.reply_text("😊 Figurinha que será enviada")
+            except Exception as e:
+                await query.message.reply_text(f"⚠️ Não foi possível exibir a mídia: {e}")
 
+    # ✅ === VER BOTÃO — MOSTRA TEXTO E LINK ===
     elif dados == "bv_verbotao":
         _, _, botoes, _ = carregar_dados_bv(chat_id)
-        txt = "✅ Botão configurado!" if botoes else "❌ Nenhum botão salvo → usará o padrão."
-        await query.message.edit_text(
-            f"🔲 **Botão atual:**\n\n{txt}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
-            parse_mode="Markdown"
-        )
+        if not botoes:
+            await query.message.edit_text(
+                f"🔲 **Nenhum botão salvo.**\nSerá usado o PADRÃO:\n\nTexto: 💎 ACESSAR CONTEÚDO 💎\nLink: {LINK_BOT_PADRAO}",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
+                parse_mode="Markdown"
+            )
+        else:
+            texto_bot = botoes.inline_keyboard[0][0].text
+            link_bot = botoes.inline_keyboard[0][0].url
+            await query.message.edit_text(
+                f"🔲 **BOTÃO CONFIGURADO:**\n\n"
+                f"📝 **Texto:** {texto_bot}\n"
+                f"🔗 **Link:** {link_bot}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(texto_bot, url=link_bot)],
+                    [InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]
+                ]),
+                parse_mode="Markdown"
+            )
 
     elif dados == "bv_cancelar":
         ESTADOS_FLUXO.pop((chat_id, user_id), None)
         await painel_principal(update, context, chat_id, msg_ref=query.message)
 
-# ✅ === RECEBE O QUE O DONO ENVIOU ===
 async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -341,7 +372,7 @@ async def capturar_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(aviso, parse_mode="Markdown")
         await painel_principal(update, context, chat_id)
 
-# ✅ === REGISTRAR TUDO NO BOT PRINCIPAL ===
+# ✅ === REGISTRAR TUDO ===
 def registrar_bemvindo(application):
     application.add_handler(CommandHandler("bemvindo", cmd_bemvindo))
     application.add_handler(CallbackQueryHandler(botoes_painel, pattern=r"^bv_"))
@@ -349,7 +380,8 @@ def registrar_bemvindo(application):
         filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Sticker.ALL & ~filters.COMMAND & filters.ChatType.PRIVATE,
         capturar_dados
     ))
+    # ✅ HANDLER CORRIGIDO — FUNCIONA NOS GRUPOS
     application.add_handler(MessageHandler(
-        filters.StatusUpdate.NEW_CHAT_MEMBERS & ~filters.ChatType.PRIVATE,
+        filters.StatusUpdate.NEW_CHAT_MEMBERS,
         novo_membro_handler
     ))
