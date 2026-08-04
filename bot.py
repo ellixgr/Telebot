@@ -14,9 +14,11 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     TypeHandler,
+    MessageHandler,          # ✅ FALTAVA ESSE!
     ContextTypes,
     ApplicationHandlerStop,
-    ChatMemberHandler
+    ChatMemberHandler,
+    filters                  # ✅ FALTAVA ESSE!
 )
 
 # ✅ IMPORTAÇÃO DO BEM-VINDO
