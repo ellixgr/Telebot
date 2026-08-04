@@ -14,14 +14,13 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     TypeHandler,
-    MessageHandler,          # ✅ FALTAVA ESSE!
+    MessageHandler,
     ContextTypes,
     ApplicationHandlerStop,
     ChatMemberHandler,
-    filters                  # ✅ FALTAVA ESSE!
+    filters               
 )
 
-# ✅ IMPORTAÇÃO DO BEM-VINDO
 from bemvindo import (
     cmd_bemvindo,
     botoes_painel_bv,
@@ -39,9 +38,6 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app_web.run(host="0.0.0.0", port=port)
 
-# ==============================================
-# ✅ SUAS CONFIGURAÇÕES — IGUAIS AO SEU
-# ==============================================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 MP_ACCESS_TOKEN = os.environ.get("MP_ACCESS_TOKEN")
 DONO_ID = int(os.environ.get("DONO_ID", 7711945457))
@@ -53,10 +49,6 @@ LISTA_VIDEOS_START = [
     "https://ellixgr.github.io/x23wzp/VN20260728_020021.mp4",
     "https://ellixgr.github.io/x23wzp/VN20260728_015729.mp4"
 ]
-
-# ==============================================
-# ✅ CONEXÃO BANCO — IGUAL AO SEU
-# ==============================================
 try:
     mongo_client = MongoClient(
         MONGO_URI,
@@ -77,9 +69,6 @@ usuarios_bloqueados = {}
 bloqueio_temporario = {}
 pagamentos_notificados = set()
 
-# ==============================================
-# ✅ INTERCEPTADOR — LIBERA /BEMVINDO TAMBÉM!
-# ==============================================
 async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user:
@@ -125,10 +114,6 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
             raise ApplicationHandlerStop
 
     ultimo_envio[user_id] = agora
-
-# ==============================================
-# ✅ SALVA GRUPOS — IGUAL AO SEU
-# ==============================================
 async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
     if not result:
@@ -149,9 +134,6 @@ async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT
         except Exception as e:
             print(f"Erro ao atualizar chat no DB: {e}")
 
-# ==============================================
-# ✅ /START — COM NOVO PLANO DE R$ 0,60 (1 HORA)
-# ==============================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
@@ -163,7 +145,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💡 *Precisa de ajuda? Fale com o suporte:* @Lyhhxv"
     )
 
-    # ✅ NOVO PLANO ADICIONADO: R$ 0,60 → 1 HORA
     keyboard = [
         [InlineKeyboardButton("⚡ ACESSO POR 1 HORA → R$ 0,60", callback_data="comprar_0.60")],
         [InlineKeyboardButton("𝐀𝐂𝐄𝐒𝐒𝐎 𝐏𝐎𝐑 1 𝐃𝐈𝐀 → R$ 2,50 🔥", callback_data="comprar_2.50")],
@@ -173,7 +154,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # ✅ ESCOLHE VÍDEO ALEATÓRIO DA SUA LISTA
     video_escolhido = random.choice(LISTA_VIDEOS_START)
 
     try:
@@ -188,9 +168,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"⚠️ Erro ao enviar vídeo: {e}")
         await update.message.reply_text(texto_boas_vindas, reply_markup=reply_markup, parse_mode="Markdown")
 
-# ==============================================
-# ✅ COMANDOS DO DONO — IGUAIS AO SEU
-# ==============================================
 async def id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != DONO_ID:
         return
@@ -327,9 +304,6 @@ async def delusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Erro ao remover usuário: {e}")
 
-# ==============================================
-# ✅ PAGAMENTO MERCADO PAGO — IGUAL AO SEU
-# ==============================================
 async def gerar_pagamento(valor, user, bot):
     url = "https://api.mercadopago.com/v1/payments"
     headers = {
@@ -372,9 +346,6 @@ async def verificar_pagamento(pag_id):
     except:
         return False, 0
 
-# ==============================================
-# ✅ BOTÕES — COM NOVO PLANO DE R$ 0,60
-# ==============================================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -406,15 +377,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(msg_completa, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_final))
         else:
             await query.message.reply_text(f"❌ Erro ao gerar o Pix:\n{qr}", parse_mode="Markdown")
-
     elif dados.startswith("check_"):
         payment_id = dados.split("_")[1]
         aprovado, valor_pago = await verificar_pagamento(payment_id)
-
         if aprovado:
             await query.answer("🎉 Pagamento Aprovado!", show_alert=True)
-
-            # ✅ NOVO PLANO ADICIONADO: R$ 0,60 = 1 HORA (3600 segundos)
             if valor_pago == 0.60:
                 duracao_segundos = 3600
                 nome_plano = "1 HORA ⚡"
@@ -451,7 +418,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 upsert=True
             )
 
-            # ✅ GERA LINK DE CONVITE
             link_convite = None
             if CANAL_ALVO_ID != 0:
                 try:
@@ -474,7 +440,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
 
-            # ✅ AVISA O DONO DA VENDA
             if payment_id not in pagamentos_notificados:
                 pagamentos_notificados.add(payment_id)
                 comprador = update.effective_user
@@ -514,22 +479,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.message.reply_text("Escolha outro plano abaixo:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ==============================================
-# ✅ GERENCIADOR DE ASSINATURAS — IGUAL AO SEU
-# ==============================================
 async def gerenciador_assinaturas(application):
     await asyncio.sleep(10)
     while True:
         try:
             agora = time.time()
             clientes = collection_clientes.find({})
-
             for cliente in clientes:
                 user_id = cliente["user_id"]
                 expira_em = cliente["expira_em"]
                 tempo_restante = expira_em - agora
-
-                # ⚠️ AVISA 1 DIA ANTES
                 if 82800 <= tempo_restante <= 86400 and not cliente.get("aviso_1dia_enviado", False):
                     try:
                         msg = (
@@ -546,8 +505,6 @@ async def gerenciador_assinaturas(application):
                         collection_clientes.update_one({"user_id": user_id}, {"$set": {"aviso_1dia_enviado": True}})
                     except:
                         pass
-
-                # ⚠️ AVISA 20 MINUTOS ANTES
                 elif 0 < tempo_restante <= 1200 and not cliente.get("aviso_20min_enviado", False):
                     try:
                         msg = (
@@ -564,8 +521,6 @@ async def gerenciador_assinaturas(application):
                         collection_clientes.update_one({"user_id": user_id}, {"$set": {"aviso_20min_enviado": True}})
                     except:
                         pass
-
-                # ❌ EXPIROU → REMOVE
                 elif tempo_restante <= 0 and CANAL_ALVO_ID != 0:
                     try:
                         await application.bot.ban_chat_member(chat_id=CANAL_ALVO_ID, user_id=user_id)
@@ -590,16 +545,10 @@ def run_background_loop(application):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(gerenciador_assinaturas(application))
 
-# ==============================================
-# ✅ INICIO — COM /BEMVINDO REGISTRADO
-# ==============================================
 def main():
     threading.Thread(target=run_web, daemon=True).start()
-
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
     threading.Thread(target=run_background_loop, args=(app,), daemon=True).start()
-
     app.add_handler(TypeHandler(Update, interceptador_universal), group=-1)
     app.add_handler(ChatMemberHandler(verificar_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CommandHandler("start", start))
@@ -613,7 +562,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Sticker.ALL & ~filters.COMMAND & filters.ChatType.PRIVATE, capturar_dados_bv))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, novo_membro_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-
     print("𝐓𝐎 𝐎𝐍 BB 😗 + /bemvindo + R$0,60 ✅")
     app.run_polling(drop_pending_updates=False)
 
