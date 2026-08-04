@@ -39,11 +39,11 @@ TEXTO_PADRAO = """👇🏻𝐓𝐄𝐍𝐇𝐀 𝐀𝐂𝐄𝐒𝐒𝐎 𝐀𝐎
 async def eh_dono_ou_adm(user_id: int) -> bool:
     return str(user_id) == str(DONO_ID)
 
-# ✅ CARREGA TUDO DO BANCO
+# ✅ === CORRIGIDO: SE NÃO EXISTIR NO BANCO → DESATIVADO POR PADRÃO ===
 def carregar_dados_bv(chat_id: int):
     doc = col_bemvindo.find_one({"chat_id": chat_id})
     if not doc:
-        return None, None, None, True  # texto, midia, botoes, status
+        return None, None, None, False  # ✅ ANTES ERA True → AGORA É False
     texto = doc.get("texto")
     midia = doc.get("midia")
     if midia:
@@ -59,7 +59,7 @@ def carregar_dados_bv(chat_id: int):
                     linha_botoes.append(InlineKeyboardButton(b["text"], url=b["url"]))
             teclado.append(linha_botoes)
         botoes = InlineKeyboardMarkup(teclado)
-    status = doc.get("status", True)
+    status = doc.get("status", False)  # ✅ PADRÃO AGORA É DESATIVADO
     return texto, midia, botoes, status
 
 # ✅ SALVA NO BANCO
@@ -80,7 +80,7 @@ def salvar_bv(chat_id: int, campo: str, valor):
 # ✅ ALTERNA STATUS ATIVAR/DESATIVAR
 def alternar_status(chat_id: int) -> bool:
     doc = col_bemvindo.find_one({"chat_id": chat_id})
-    status_atual = doc.get("status", True) if doc else True
+    status_atual = doc.get("status", False) if doc else False
     novo = not status_atual
     salvar_bv(chat_id, "status", novo)
     return novo
@@ -118,15 +118,19 @@ async def formatar_texto(chat_id: int, usuario, context: ContextTypes.DEFAULT_TY
         texto_base = texto_base.replace(chave, val)
     return texto_base
 
-# ✅ === ENVIAR BOAS-VINDAS QUANDO ALGUÉM ENTRA ===
+# ✅ === ENVIAR BOAS-VINDAS — VERIFICA STATUS ANTES DE TUDO ===
 async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DEFAULT_TYPE):
-    _, midia, botoes, status = carregar_dados_bv(chat_id)
+    _, _, _, status = carregar_dados_bv(chat_id)
+    
+    # ✅ SE ESTIVER DESATIVADO → NÃO ENVIA NADA! PONTO FINAL!
     if not status:
+        logger.info(f"ℹ️ Boas-vindas DESATIVADAS no chat {chat_id} — ignorando")
         return
 
     texto_final = await formatar_texto(chat_id, usuario, context)
     
     # Se não tem botão salvo → usa o padrão
+    _, midia, botoes, _ = carregar_dados_bv(chat_id)
     if not botoes:
         botoes = InlineKeyboardMarkup([[InlineKeyboardButton("💎 ACESSAR CONTEÚDO 💎", url=LINK_BOT_PADRAO)]])
 
@@ -145,7 +149,7 @@ async def enviar_bemvindo_membro(chat_id: int, usuario, context: ContextTypes.DE
         else:
             await context.bot.send_message(chat_id, texto_final, reply_markup=botoes, parse_mode="HTML")
     except Exception as e:
-        logger.error(f"Erro ao enviar boas-vindas: {e}")
+        logger.error(f"❌ Erro ao enviar boas-vindas: {e}")
         try:
             await context.bot.send_message(chat_id, texto_final, reply_markup=botoes, parse_mode="HTML")
         except:
@@ -165,9 +169,9 @@ async def novo_membro_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, msg_ref=None, aviso=""):
     texto, midia, botoes, status = carregar_dados_bv(chat_id)
     status_emoji = "🟢 Ativado" if status else "🔴 Desativado"
-    tem_texto = "✅" if texto else "❌"
+    tem_texto = "✅" if texto else "❌ (usará padrão)"
     tem_midia = "✅" if midia else "❌"
-    tem_botao = "✅" if botoes else "❌"
+    tem_botao = "✅" if botoes else "❌ (usará padrão)"
 
     teclado = InlineKeyboardMarkup([
         [InlineKeyboardButton("📝 Editar Texto", callback_data="bv_edtxt"),
@@ -186,6 +190,7 @@ async def painel_principal(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         f"📄 Texto: {tem_texto}\n"
         f"🎞️ Mídia: {tem_midia}\n"
         f"🔲 Botão: {tem_botao}\n\n"
+        f"⚠️ Se estiver 🔴 Desativado → NÃO ENVIA NADA!\n\n"
         f"Escolha abaixo o que quer configurar:"
     )
 
@@ -222,7 +227,9 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if dados == "bv_toggle":
         alternar_status(chat_id)
-        await painel_principal(update, context, chat_id, msg_ref=query.message)
+        _, _, _, status_novo = carregar_dados_bv(chat_id)
+        aviso = "✅ **ATIVADO!** Agora vai enviar!" if status_novo else "🔴 **DESATIVADO!** Não vai enviar mais nada!"
+        await painel_principal(update, context, chat_id, msg_ref=query.message, aviso=aviso)
 
     elif dados == "bv_edtxt":
         ESTADOS_FLUXO[(chat_id, user_id)] = "aguardando_texto"
@@ -259,7 +266,7 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif dados == "bv_vertxt":
         texto, _, _, _ = carregar_dados_bv(chat_id)
-        txt = texto or TEXTO_PADRAO
+        txt = texto or f"📄 **Usando texto PADRÃO do sistema:**\n\n{TEXTO_PADRAO}"
         await query.message.edit_text(
             f"📄 **Texto atual:**\n\n{txt}",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
@@ -277,7 +284,7 @@ async def botoes_painel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif dados == "bv_verbotao":
         _, _, botoes, _ = carregar_dados_bv(chat_id)
-        txt = "✅ Botão configurado!" if botoes else "❌ Nenhum botão salvo."
+        txt = "✅ Botão configurado!" if botoes else "❌ Nenhum botão salvo → usará o padrão."
         await query.message.edit_text(
             f"🔲 **Botão atual:**\n\n{txt}",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Voltar", callback_data="bv_cancelar")]]),
