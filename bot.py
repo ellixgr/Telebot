@@ -155,27 +155,26 @@ async def pegarid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = video.file_id
         duracao = video.duration
         texto = (
-            "✅ **FILE_ID DO VÍDEO:**\n\n"
-            f"`{file_id}`\n\n"
-            f"⏱ **Duração:** {duracao}s\n\n"
-            "Coloque esse código na lista `LISTA_VIDEOS_START`!"
+            "✅ FILE_ID DO VIDEO:\n\n"
+            f"{file_id}\n\n"
+            f"Duração: {duracao}s\n\n"
+            "Coloque esse codigo na lista LISTA_VIDEOS_START!"
         )
-        await mensagem.reply_text(texto, parse_mode="Markdown")
+        await mensagem.reply_text(texto)
         return
     if mensagem.video:
         file_id = mensagem.video.file_id
         duracao = mensagem.video.duration
         texto = (
-            "✅ **FILE_ID DO VÍDEO:**\n\n"
-            f"`{file_id}`\n\n"
-            f"⏱ **Duração:** {duracao}s\n\n"
-            "Coloque esse código na lista `LISTA_VIDEOS_START`!"
+            "✅ FILE_ID DO VIDEO:\n\n"
+            f"{file_id}\n\n"
+            f"Duração: {duracao}s\n\n"
+            "Coloque esse codigo na lista LISTA_VIDEOS_START!"
         )
-        await mensagem.reply_text(texto, parse_mode="Markdown")
+        await mensagem.reply_text(texto)
         return
     await mensagem.reply_text(
-        "⚠️ **Responda um vídeo com** `/pegarid` **ou mande o vídeo junto com o comando!**",
-        parse_mode="Markdown"
+        "⚠️ RESPONDA um vídeo com /pegarid ou mande o vídeo junto com o comando!"
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
