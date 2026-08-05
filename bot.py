@@ -92,7 +92,7 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
 
     if update.message and update.message.text and update.message.text.startswith('/'):
         cmd = update.message.text.split()[0].split('@')[0].lower()
-        if cmd not in ['/start', '/suporte', '/suport', '/bemvindo']:
+        if cmd not in ['/start', '/suporte', '/suport', '/bemvindo', '/pegarid']:
             raise ApplicationHandlerStop
 
     if user_id in bloqueio_temporario:
@@ -145,6 +145,38 @@ async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT
                 collection_chats.delete_one({"chat_id": chat.id})
         except Exception as e:
             print(f"Erro ao atualizar chat no DB: {e}")
+
+async def pegarid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != DONO_ID:
+        return
+    mensagem = update.message
+    if mensagem.reply_to_message and mensagem.reply_to_message.video:
+        video = mensagem.reply_to_message.video
+        file_id = video.file_id
+        duracao = video.duration
+        texto = (
+            "✅ **FILE_ID DO VÍDEO:**\n\n"
+            f"`{file_id}`\n\n"
+            f"⏱ **Duração:** {duracao}s\n\n"
+            "Coloque esse código na lista `LISTA_VIDEOS_START`!"
+        )
+        await mensagem.reply_text(texto, parse_mode="Markdown")
+        return
+    if mensagem.video:
+        file_id = mensagem.video.file_id
+        duracao = mensagem.video.duration
+        texto = (
+            "✅ **FILE_ID DO VÍDEO:**\n\n"
+            f"`{file_id}`\n\n"
+            f"⏱ **Duração:** {duracao}s\n\n"
+            "Coloque esse código na lista `LISTA_VIDEOS_START`!"
+        )
+        await mensagem.reply_text(texto, parse_mode="Markdown")
+        return
+    await mensagem.reply_text(
+        "⚠️ **Responda um vídeo com** `/pegarid` **ou mande o vídeo junto com o comando!**",
+        parse_mode="Markdown"
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
@@ -215,106 +247,6 @@ async def suporte_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👉 **@Lyhhxv**",
         parse_mode="Markdown"
     )
-
-async def addusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != DONO_ID:
-        return
-
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text(
-            "⚠️ Use corretamente:\n"
-            "• `/addusuario <id> plano 2 / 50m` (minutos)\n"
-            "• `/addusuario <id> plano 2 / 2h` (horas)\n"
-            "• `/addusuario <id> plano 2 / 3d` (dias)\n"
-            "• `/addusuario <id> plano 7` (dias padrão)",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        user_id = int(args[0])
-        resto_texto = "".join(args[1:]).lower()
-
-        duracao_segundos = 86400
-        tempo_str_formatado = ""
-
-        match_m = re.search(r'(\d+)m', resto_texto)
-        match_h = re.search(r'(\d+)h', resto_texto)
-        match_d = re.search(r'(\d+)d', resto_texto)
-
-        if match_m:
-            qtd_minutos = int(match_m.group(1))
-            duracao_segundos = qtd_minutos * 60
-            tempo_str_formatado = f"{qtd_minutos} minuto(s)"
-        elif match_h:
-            qtd_horas = int(match_h.group(1))
-            duracao_segundos = qtd_horas * 3600
-            tempo_str_formatado = f"{qtd_horas} hora(s)"
-        elif match_d:
-            qtd_dias = int(match_d.group(1))
-            duracao_segundos = qtd_dias * 86400
-            tempo_str_formatado = f"{qtd_dias} dia(s)"
-        else:
-            plano_arg = args[1].lower()
-            if plano_arg.startswith("plano"):
-                if len(args) < 3:
-                    await update.message.reply_text("⚠️ Informe o valor do plano. Ex: `/addusuario 837382929 plano 2`", parse_mode="Markdown")
-                    return
-                dias_valor = int(re.sub(r'[^0-9]', '', args[2]) or '1')
-            else:
-                dias_valor = int(re.sub(r'[^0-9]', '', plano_arg) or '1')
-
-            if dias_valor == 7:
-                duracao_segundos = 86400 * 7
-            elif dias_valor == 20:
-                duracao_segundos = 86400 * 30
-            elif dias_valor == 60:
-                duracao_segundos = 86400 * 365 * 10
-            elif dias_valor == 2:
-                duracao_segundos = 86400 * 1
-            else:
-                duracao_segundos = 86400 * dias_valor
-            tempo_str_formatado = f"{dias_valor} dia(s)"
-
-        tempo_expiracao = time.time() + duracao_segundos
-
-        collection_clientes.update_one(
-            {"user_id": user_id},
-            {
-                "$set": {
-                    "user_id": user_id,
-                    "nome": "Adicionado Manualmente",
-                    "expira_em": tempo_expiracao,
-                    "aviso_1dia_enviado": False,
-                    "aviso_20min_enviado": False
-                }
-            },
-            upsert=True
-        )
-        await update.message.reply_text(f"✅ Usuário `{user_id}` adicionado com sucesso por `{tempo_str_formatado}`!", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erro ao adicionar usuário: {e}")
-
-async def delusuario_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != DONO_ID:
-        return
-
-    args = context.args
-    if not args:
-        await update.message.reply_text("⚠️ Use: `/delusuario <id_usuario>`", parse_mode="Markdown")
-        return
-
-    try:
-        user_id = int(args[0])
-        resultado = collection_clientes.delete_one({"user_id": user_id})
-
-        if resultado.deleted_count > 0:
-            await update.message.reply_text(f"✅ O usuário `{user_id}` foi removido da lista de clientes com sucesso! (Ele continua no grupo).", parse_mode="Markdown")
-        else:
-            await update.message.reply_text(f"⚠️ O usuário `{user_id}` não foi encontrado na base de dados de clientes.", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erro ao remover usuário: {e}")
 
 async def gerar_pagamento(valor, user, bot):
     url = "https://api.mercadopago.com/v1/payments"
@@ -579,14 +511,13 @@ def main():
     app.add_handler(CommandHandler("id", id_cmd))
     app.add_handler(CommandHandler("ping", ping_cmd))
     app.add_handler(CommandHandler(["suporte", "suport"], suporte_cmd))
-    app.add_handler(CommandHandler("addusuario", addusuario_cmd))
-    app.add_handler(CommandHandler("delusuario", delusuario_cmd))
+    app.add_handler(CommandHandler("pegarid", pegarid_cmd))
     app.add_handler(CommandHandler("bemvindo", cmd_bemvindo))
     app.add_handler(CallbackQueryHandler(botoes_painel_bv, pattern=r"^bv_"))
     app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Sticker.ALL & ~filters.COMMAND & filters.ChatType.PRIVATE, capturar_dados_bv))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, novo_membro_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("𝐓𝐎 𝐎𝐍 BB 😗 + /bemvindo + R$0,60 ✅")
+    print("𝐓𝐎 𝐎𝐍 BB 😗 + /bemvindo + /pegarid + R$0,60 ✅")
     app.run_polling(drop_pending_updates=False)
 
 if __name__ == "__main__":
