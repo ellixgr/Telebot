@@ -77,6 +77,8 @@ usuarios_bloqueados = {}
 bloqueio_temporario = {}
 pagamentos_notificados = set()
 
+COMANDOS_LIBERADOS = ['/start', '/suporte', '/suport', '/bemvindo', '/pegarid', '/id', '/ping']
+
 async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user:
@@ -84,14 +86,17 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
     user_id = user.id
     agora = time.time()
 
+    # ✅ O DONO NUNCA É BLOQUEADO — PRIMEIRA COISA A SER VERIFICADA
     if user_id == DONO_ID:
         return
 
-    if update.message and update.message.text and update.message.text.startswith('/'):
+    # ✅ Comandos liberados passam direto SEM filtro de spam
+    if update.message and update.message.text:
         cmd = update.message.text.split()[0].split('@')[0].lower()
-        if cmd not in ['/start', '/suporte', '/suport', '/bemvindo', '/pegarid']:
-            raise ApplicationHandlerStop
+        if cmd in COMANDOS_LIBERADOS:
+            return
 
+    # ❌ Aplica bloqueios e spam SÓ para os outros comandos/mensagens
     if user_id in bloqueio_temporario:
         if bloqueio_temporario[user_id] - agora > 0:
             raise ApplicationHandlerStop
@@ -245,7 +250,8 @@ async def suporte_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def gerar_pagamento(valor, user, bot):
-    url = "https://api.mercadopago.com/v1/payments"
+    # ✅ URL corrigida com barra no final (compatível com MP)
+    url = "https://api.mercadopago.com/v1/payments/"
     headers = {
         "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
         "Content-Type": "application/json",
@@ -269,13 +275,13 @@ async def gerar_pagamento(valor, user, bot):
             return True, dados["id"], qr
         else:
             print(f"❌ ERRO MP: {resp.status_code} | {resp.text[:300]}")
-            return False, None, f"Erro API: {resp.status_code}"
+            return False, None, f"Erro API: {resp.status_code} — Verifique seu MP_ACCESS_TOKEN"
     except Exception as e:
         print(f"❌ ERRO CONEXÃO MP: {e}")
         return False, None, f"Erro de conexão: {str(e)}"
 
 async def verificar_pagamento(pag_id):
-    url = f"https://api.mercadopago.com/v1/payments/{pag_id}"
+    url = f"https://api.mercadopago.com/v1/payments/{pag_id}/"
     headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
     try:
         resp = requests.get(url, headers=headers, timeout=10)
@@ -283,7 +289,8 @@ async def verificar_pagamento(pag_id):
             dados = resp.json()
             return dados.get("status") == "approved", dados.get("transaction_amount", 0)
         return False, 0
-    except:
+    except Exception as e:
+        print(f"Erro verificar pagamento: {e}")
         return False, 0
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -513,7 +520,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Sticker.ALL & ~filters.COMMAND & filters.ChatType.PRIVATE, capturar_dados_bv))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, novo_membro_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("𝐓𝐎 𝐎𝐍 BB 😗 + /bemvindo + /pegarid + R$0,60 ✅")
+    print("✅ BOT ONLINE — /start LIBERADO para todos!")
     app.run_polling(drop_pending_updates=False)
 
 if __name__ == "__main__":
