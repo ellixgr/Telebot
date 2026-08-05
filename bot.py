@@ -6,6 +6,7 @@ import requests
 import threading
 import random
 import re
+from datetime import datetime, timezone, timedelta
 from flask import Flask
 from pymongo import MongoClient
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -44,11 +45,21 @@ DONO_ID = int(os.environ.get("DONO_ID", 7711945457))
 CANAL_ALVO_ID = int(os.environ.get("CANAL_ALVO_ID", -1004399892914))
 MONGO_URI = os.environ.get("MONGO_URI")
 
-# ✅ SEUS VÍDEOS DO START — IGUAIS AO SEU
+FUSO_RJ = timezone(timedelta(hours=-3))
+
+def formatar_data_rj(timestamp):
+    return datetime.fromtimestamp(timestamp, tz=FUSO_RJ).strftime("%d/%m/%Y às %H:%M")
+
 LISTA_VIDEOS_START = [
-    "https://ellixgr.github.io/x23wzp/VN20260728_020021.mp4",
-    "https://ellixgr.github.io/x23wzp/VN20260728_015729.mp4"
+    "BAACAgEAAxkBAAIEaGpypkNQUJJljEnJb7HL6E8_jI9wAAKFBgACCyKZR-8RZtV8X4rJPQQ",
+    "BAACAgQAAxkDAAICGmpoPJTXgCHfxtZabyU-4BF-LQ2aAAIyCgACN9NMU1DMn3zufwakPQQ",
+    "BAACAgQAAxkDAAICHGpoPQABSIsmMhqbhyOF5T3dTtOPMQAC2AoAAsGPRVP2U4U5hzZfgD0E",
+    "BAACAgEAAxkBAAIEiGpyriREGTmCsDEL-K7HP20Lu4anAAKIBgACCyKZR-NXEURfyoGWPQQ",
+    "BAACAgEAAxkBAAIEi2pyrrUAAXpOCWe8aG_nf_8n0X927wACiQYAAgsimUdIi2LyBhmPoz0E",
+    "BAACAgEAAxkBAAIEjmpyrxiNAfhRdTuM-gL2QlzUVjRzAAKKBgACCyKZR5GXizEzidIiPQQ",
+    "BAACAgEAAxkBAAIElGpysAVDwH-LYNh9sODcX3lBl7O-AAKMBgACCyKZR3ERh8tK65nkPQQ"
 ]
+
 try:
     mongo_client = MongoClient(
         MONGO_URI,
@@ -114,6 +125,7 @@ async def interceptador_universal(update: Update, context: ContextTypes.DEFAULT_
             raise ApplicationHandlerStop
 
     ultimo_envio[user_id] = agora
+
 async def verificar_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
     if not result:
@@ -377,24 +389,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(msg_completa, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_final))
         else:
             await query.message.reply_text(f"❌ Erro ao gerar o Pix:\n{qr}", parse_mode="Markdown")
+
     elif dados.startswith("check_"):
         payment_id = dados.split("_")[1]
         aprovado, valor_pago = await verificar_pagamento(payment_id)
         if aprovado:
             await query.answer("🎉 Pagamento Aprovado!", show_alert=True)
-            if valor_pago == 0.60:
+            if abs(valor_pago - 0.60) < 0.01:
                 duracao_segundos = 3600
                 nome_plano = "1 HORA ⚡"
-            elif valor_pago == 2.50:
+            elif abs(valor_pago - 2.50) < 0.01:
                 duracao_segundos = 86400
                 nome_plano = "1 Dia 🔥"
-            elif valor_pago == 7.00:
+            elif abs(valor_pago - 7.00) < 0.01:
                 duracao_segundos = 86400 * 7
                 nome_plano = "1 Semana"
-            elif valor_pago == 20.00:
+            elif abs(valor_pago - 20.00) < 0.01:
                 duracao_segundos = 86400 * 30
                 nome_plano = "1 Mês"
-            elif valor_pago == 60.00:
+            elif abs(valor_pago - 60.00) < 0.01:
                 duracao_segundos = 86400 * 365 * 10
                 nome_plano = "Permanente"
             else:
@@ -403,14 +416,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             user_id = update.effective_user.id
             tempo_expiracao = time.time() + duracao_segundos
+            user_obj = update.effective_user
+            username = f"@{user_obj.username}" if user_obj.username else "Sem @"
+            data_compra = time.time()
 
             collection_clientes.update_one(
                 {"user_id": user_id},
                 {
                     "$set": {
                         "user_id": user_id,
-                        "nome": update.effective_user.first_name or "Cliente",
+                        "nome": user_obj.first_name or "Cliente",
+                        "username": username,
                         "expira_em": tempo_expiracao,
+                        "valor_pago": f"{valor_pago:.2f}",
+                        "data_compra": data_compra,
                         "aviso_1dia_enviado": False,
                         "aviso_20min_enviado": False
                     }
@@ -432,11 +451,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             texto_link = f"Aqui está o seu link de acesso exclusivo:\n{link_convite}" if link_convite else "⚠️ Entre em contato com o suporte (@Lyhhxv) para liberar seu acesso."
 
+            data_compra_rj = formatar_data_rj(data_compra)
+            data_expira_rj = "Permanente" if nome_plano == "Permanente" else formatar_data_rj(tempo_expiracao)
+
             await query.message.reply_text(
                 f"🎉 **Pagamento Aprovado com Sucesso!**\n\n"
                 f"✅ Plano: **{nome_plano}**\n"
                 f"💰 Valor: **R$ {valor_pago:.2f}**\n\n"
-                f"Muito obrigado pela compra!\n{texto_link}",
+                f"{texto_link}\n\n"
+                f"Aproveite o grupo🤭🩷",
                 parse_mode="Markdown"
             )
 
@@ -450,7 +473,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🆔 **ID do Telegram:** `{comprador.id}`\n"
                     f"💰 **Valor Pago:** R$ {valor_pago:.2f}\n"
                     f"📅 **Plano Escolhido:** {nome_plano}\n"
-                    f"⏰ **Data/Hora:** {time.strftime('%d/%m/%Y às %H:%M:%S', time.localtime())}\n"
+                    f"🛒 **Pagamento em:** {data_compra_rj}\n"
+                    f"⏰ **Expira em:** {data_expira_rj}\n"
                     f"🧾 **ID do Pix:** `{payment_id}`\n"
                     f"🟢 **Status:** Aprovado"
                 )
